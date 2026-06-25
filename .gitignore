@@ -4,3 +4,4 @@ node_modules
 out
 .env.local
 *.tsbuildinfo
+*.tar.gz
