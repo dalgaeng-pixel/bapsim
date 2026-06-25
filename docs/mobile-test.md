@@ -34,3 +34,18 @@ npm run dev -- --hostname 0.0.0.0 --port 3000
 이 방식은 모바일 화면과 기능 테스트용이다.
 
 휴대폰 홈 화면 설치, iPhone PWA 동작, 푸시 알림까지 정확히 보려면 HTTPS 주소가 필요하다. HTTPS 테스트는 Vercel 배포 또는 임시 HTTPS 터널을 사용한다.
+
+## HTTPS 배포 테스트
+
+Sites 배포 URL:
+
+```text
+https://bapsim-meal-delivery.workspace-398477.chatgpt-team.site
+```
+
+현재 Sites 배포는 비공개 배포다. 휴대폰에서 접근 시 로그인 화면이 나오면, 실제 거래처 테스트 전에 사이트 접근 권한을 공개로 바꿔야 한다.
+
+설치 테스트:
+
+- Android Chrome: 주소 열기 -> 메뉴 -> 앱 설치 또는 홈 화면에 추가
+- iPhone Safari: 주소 열기 -> 공유 -> 홈 화면에 추가

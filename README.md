@@ -15,6 +15,10 @@ npm run dev
 - 관리자: http://127.0.0.1:3000/admin
 - 거래처 담당자: http://127.0.0.1:3000/client
 
+HTTPS 테스트 배포:
+
+- https://bapsim-meal-delivery.workspace-398477.chatgpt-team.site
+
 ## 샘플 로그인
 
 - 관리자: 전화번호 입력 후 인증번호 4자리 이상 입력
