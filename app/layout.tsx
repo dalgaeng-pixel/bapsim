@@ -11,8 +11,8 @@ export const metadata: Metadata = {
     statusBarStyle: "default"
   },
   icons: {
-    icon: "/app-icon.svg",
-    apple: "/app-icon.svg"
+    icon: "/bapsim-logo.png",
+    apple: "/bapsim-logo.png"
   }
 };
 

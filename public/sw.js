@@ -1,7 +1,7 @@
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open("bapsim-shell-v1").then((cache) =>
-      cache.addAll(["/", "/admin", "/client", "/app-icon.svg", "/bapsim-logo.png"])
+      cache.addAll(["/", "/admin", "/client", "/bapsim-logo.png"])
     )
   );
   self.skipWaiting();

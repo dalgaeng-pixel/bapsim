@@ -14,12 +14,6 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#c8191f",
     icons: [
       {
-        src: "/app-icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "any"
-      },
-      {
         src: "/bapsim-logo.png",
         sizes: "1056x393",
         type: "image/png",
