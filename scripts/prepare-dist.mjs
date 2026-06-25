@@ -1,4 +1,4 @@
-import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 
 if (existsSync("dist")) {
   rmSync("dist", { recursive: true, force: true });
@@ -8,10 +8,12 @@ if (!existsSync("out")) {
   throw new Error("Next static export output directory 'out' was not created.");
 }
 
-cpSync("out", "dist", { recursive: true });
+mkdirSync("dist/client", { recursive: true });
+mkdirSync("dist/server", { recursive: true });
+cpSync("out", "dist/client", { recursive: true });
 
 writeFileSync(
-  "dist/index.js",
+  "dist/server/index.js",
   `const hasFileExtension = /\\.[a-zA-Z0-9]+$/;
 
 export default {
