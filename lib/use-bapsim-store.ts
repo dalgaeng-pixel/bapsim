@@ -48,6 +48,13 @@ async function fetchRemoteState(): Promise<RemoteStateResponse> {
   });
 
   if (!response.ok) {
+    if (response.status === 404) {
+      return {
+        configured: false,
+        mode: "local"
+      };
+    }
+
     return {
       configured: true,
       mode: "supabase-error",

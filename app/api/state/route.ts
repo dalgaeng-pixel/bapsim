@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { loadAppStateFromSupabase, saveAppStateToSupabase } from "@/lib/supabase-state";
 import type { AppState } from "@/lib/types";
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 export async function GET() {
   const supabase = createSupabaseAdminClient();

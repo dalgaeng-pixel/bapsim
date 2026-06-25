@@ -1,4 +1,6 @@
 .next
+dist
 node_modules
+out
 .env.local
 *.tsbuildinfo
