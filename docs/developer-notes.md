@@ -27,6 +27,8 @@ This file is the first stop for the next agent or developer continuing the proje
 - Sites does not accept SVG/PNG files as worker modules at the archive root. The build script therefore emits:
   - `dist/server/index.js` as the worker entrypoint
   - `dist/client/*` as static assets
+- Sites public internet publishing is disabled for the current workspace. The deployed Sites URL requires ChatGPT sign-in unless access policy changes become available.
+- For immediate no-login mobile testing, use localtunnel as a temporary HTTPS tunnel. Example URL generated during testing: `https://fine-pears-exist.loca.lt`.
 
 ## How To Run Locally
 
@@ -48,6 +50,15 @@ npm run dev -- --hostname 0.0.0.0 --port 3000
 ```
 
 Then open the PC LAN IP, currently documented as `http://192.168.0.106:3000`.
+
+For temporary public HTTPS testing:
+
+```bash
+npm run dev -- --hostname 0.0.0.0 --port 3000
+npx --yes localtunnel --port 3000 --local-host 127.0.0.1
+```
+
+The localtunnel URL changes and only works while both processes are running.
 
 ## Test Login
 
@@ -131,18 +142,19 @@ The app state currently contains:
 ## Next Recommended Work
 
 1. Test the HTTPS URL on Android Chrome and iPhone Safari.
-2. Decide whether to make Sites access broader for non-owner phone testing.
-3. Create a Supabase project and run `docs/supabase-schema.sql`.
-4. Add `.env.local` locally and production env vars in the deployment platform.
-5. Replace whole-state sync with granular server workflows:
+2. For no-login temporary testing, use localtunnel.
+3. For stable customer testing, choose a public hosting provider such as Vercel, Netlify, or Cloudflare Pages.
+4. Create a Supabase project and run `docs/supabase-schema.sql`.
+5. Add `.env.local` locally and production env vars in the deployment platform.
+6. Replace whole-state sync with granular server workflows:
    - create/update client
    - change quantity
    - submit/resolve request
    - acknowledge important order
    - delivery order override
-6. Wire real admin phone OTP.
-7. Generate customer invite link/QR flow.
-8. Add Web Push subscription and server-side notification delivery.
+7. Wire real admin phone OTP.
+8. Generate customer invite link/QR flow.
+9. Add Web Push subscription and server-side notification delivery.
 
 ## Update Rule
 

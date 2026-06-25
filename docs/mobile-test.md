@@ -49,3 +49,32 @@ https://bapsim-meal-delivery.workspace-398477.chatgpt-team.site
 
 - Android Chrome: 주소 열기 -> 메뉴 -> 앱 설치 또는 홈 화면에 추가
 - iPhone Safari: 주소 열기 -> 공유 -> 홈 화면에 추가
+
+## 임시 공개 HTTPS 터널
+
+Sites 공개 배포가 워크스페이스 정책으로 막힌 경우, localtunnel로 임시 HTTPS 주소를 만들 수 있다.
+
+터미널 1:
+
+```bash
+npm run dev -- --hostname 0.0.0.0 --port 3000
+```
+
+터미널 2:
+
+```bash
+npx --yes localtunnel --port 3000 --local-host 127.0.0.1
+```
+
+예시로 생성된 주소:
+
+```text
+https://fine-pears-exist.loca.lt
+```
+
+주의:
+
+- 이 주소는 임시 주소다.
+- PC가 켜져 있고 두 터미널이 실행 중일 때만 동작한다.
+- 거래처 장기 테스트용 주소로 쓰면 안 된다.
+- 앱 설치/모바일 화면 확인용으로만 사용한다.
