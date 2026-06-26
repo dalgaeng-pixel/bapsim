@@ -61,6 +61,15 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
     }
   }, [client]);
 
+  // 카카오톡 인앱 브라우저 자동 탈출 로직
+  useEffect(() => {
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (userAgent.includes("kakaotalk")) {
+      const url = window.location.href;
+      window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(url)}`;
+    }
+  }, []);
+
   useEffect(() => {
     if (loggedIn && order) {
       setQuantityDraft(order.finalQuantity);
