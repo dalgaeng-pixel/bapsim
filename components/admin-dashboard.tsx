@@ -131,6 +131,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
 
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
   const reviewOrders = state.orders.filter((order) => order.requiresReview && !order.acknowledged);
+  const adminUnreadCount = state.notifications.filter((n) => n.target === "admin" && !n.read).length;
 
   if (!store.loaded) {
     return <div className="p-8 text-sm font-semibold text-stone-600">불러오는 중</div>;
@@ -163,9 +164,9 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
               title="실시간 알림 켜기 및 알림 읽음 처리"
             >
               <Bell size={16} />
-              {store.unreadNotificationCount > 0 ? (
+              {adminUnreadCount > 0 ? (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-bapsim-red px-1 text-[10px] font-black text-white">
-                  {store.unreadNotificationCount}
+                  {adminUnreadCount}
                 </span>
               ) : null}
             </button>
