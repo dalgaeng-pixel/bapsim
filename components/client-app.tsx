@@ -11,7 +11,7 @@ import {
   Send,
   UserRound
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Logo } from "@/components/logo";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel } from "@/lib/status";
@@ -45,6 +45,25 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   const order = store.state.orders.find((item) => item.clientId === client?.id);
   const mealType = order ? store.getMealType(order.mealTypeId) : store.activeMealType;
   const cutoffPassed = isPastCutoff(mealType?.cutoffTime);
+
+  useEffect(() => {
+    if (client) {
+      try {
+        const savedPin = localStorage.getItem(`bapsim_client_auth_${client.id}`);
+        if (savedPin === client.invitePin) {
+          setLoggedIn(true);
+        }
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+    }
+  }, [client]);
+
+  useEffect(() => {
+    if (loggedIn && order) {
+      setQuantityDraft(order.finalQuantity);
+    }
+  }, [loggedIn, order?.finalQuantity]);
 
   const logs = useMemo(
     () => store.state.orderChangeLogs.filter((log) => log.clientId === client?.id),
@@ -107,6 +126,11 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
               onClick={() => {
                 if (pin === client.invitePin) {
                   setLoggedIn(true);
+                  try {
+                    localStorage.setItem(`bapsim_client_auth_${client.id}`, client.invitePin);
+                  } catch (e) {
+                    // Ignore localStorage errors
+                  }
                   setQuantityDraft(order.finalQuantity);
                   return;
                 }
