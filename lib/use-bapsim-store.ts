@@ -828,6 +828,8 @@ export function useBapsimStore(initialState?: AppState) {
     createClientRecord,
     updateClientRecord,
     toggleClientStatus,
-    resetClientPin
+    resetClientPin,
+    submitQuantityRequest,
+    addHoliday
   };
 }
