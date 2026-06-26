@@ -29,7 +29,8 @@ export function requestTypeLabel(type: RequestType) {
     late_quantity: "마감 후 수량 변경",
     late_rejection: "마감 후 식사 거절",
     address_update: "주소 변경 요청",
-    contact_update: "담당자 변경 요청"
+    contact_update: "담당자 변경 요청",
+    default_quantity_update: "기본 식수 변경 요청"
   };
 
   return labels[type];

@@ -5,7 +5,8 @@ export type RequestType =
   | "late_quantity"
   | "late_rejection"
   | "address_update"
-  | "contact_update";
+  | "contact_update"
+  | "default_quantity_update";
 export type NotificationTarget = "admin" | "client";
 export type AuditAction =
   | "create_client"

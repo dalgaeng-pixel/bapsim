@@ -67,7 +67,7 @@ create table if not exists public.order_change_logs (
 
 create table if not exists public.change_requests (
   id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('late_quantity', 'late_rejection', 'address_update', 'contact_update')),
+  type text not null check (type in ('late_quantity', 'late_rejection', 'address_update', 'contact_update', 'default_quantity_update')),
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   client_id uuid not null references public.clients(id) on delete cascade,
   order_id uuid references public.daily_meal_orders(id) on delete set null,

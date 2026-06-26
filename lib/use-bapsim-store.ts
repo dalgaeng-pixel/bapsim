@@ -357,6 +357,7 @@ export function useBapsimStore(initialState?: AppState) {
         const resolvedAt = new Date().toISOString();
         let nextOrders = previous.orders;
         let nextClients = previous.clients;
+        let nextDefaultQuantities = previous.defaultQuantities;
         const client = previous.clients.find((item) => item.id === request.clientId);
 
         if (status === "approved" && request.orderId && request.requestedQuantity !== undefined) {
@@ -401,6 +402,14 @@ export function useBapsimStore(initialState?: AppState) {
           );
         }
 
+        if (status === "approved" && request.type === "default_quantity_update" && request.requestedQuantity !== undefined) {
+          nextDefaultQuantities = previous.defaultQuantities.map((item) =>
+            item.clientId === request.clientId
+              ? { ...item, quantity: request.requestedQuantity! }
+              : item
+          );
+        }
+
         const updatedRequest: ChangeRequest = {
           ...request,
           status,
@@ -433,12 +442,66 @@ export function useBapsimStore(initialState?: AppState) {
         return {
           ...previous,
           clients: nextClients,
+          defaultQuantities: nextDefaultQuantities,
           orders: nextOrders,
           changeRequests: previous.changeRequests.map((item) =>
             item.id === request.id ? updatedRequest : item
           ),
           notifications: [notification, ...previous.notifications],
           auditLogs: [auditLog, ...previous.auditLogs]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const addHoliday = useCallback(
+    (clientId: string, date: string, name: string) => {
+      commit((previous) => {
+        const holiday: Holiday = {
+          id: id("holiday"),
+          clientId,
+          date,
+          name
+        };
+        return {
+          ...previous,
+          holidays: [holiday, ...previous.holidays]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const submitQuantityRequest = useCallback(
+    (clientId: string, currentQuantity: number, requestedQuantity: number, memo?: string) => {
+      commit((previous) => {
+        const createdAt = new Date().toISOString();
+        const request: ChangeRequest = {
+          id: id("request"),
+          type: "default_quantity_update",
+          status: "pending",
+          clientId,
+          currentQuantity,
+          requestedQuantity,
+          memo,
+          requestedAt: createdAt
+        };
+
+        const notification: AppNotification = {
+          id: id("notification"),
+          target: "admin",
+          clientId,
+          title: "기본 식수 변경 요청",
+          body: `기본 식수를 ${currentQuantity}개에서 ${requestedQuantity}개로 변경해 달라는 요청이 들어왔습니다.`,
+          read: false,
+          createdAt
+        };
+
+        return {
+          ...previous,
+          changeRequests: [request, ...previous.changeRequests],
+          notifications: [notification, ...previous.notifications]
         };
       });
     },

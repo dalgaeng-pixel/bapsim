@@ -201,7 +201,13 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                 <p className="text-sm font-black text-stone-700">
                   {cutoffPassed ? "변경 요청 수량" : "변경 후 수량"}
                 </p>
-                <div className="mt-3 grid grid-cols-[44px_1fr_44px] items-center gap-3">
+                <div className="mt-3 rounded-md bg-stone-100 p-3 text-sm text-stone-600">
+                  <p className="font-bold text-stone-700">💡 매번 식사 요청을 하지 않으셔도 됩니다.</p>
+                  <p className="mt-1 leading-relaxed">
+                    처음에 설정된 인원수만큼 기본적으로 매일 제공하며, 특별히 변동사항이 있을 시만 수량을 변경해 주시면 즉시 반영됩니다.
+                  </p>
+                </div>
+                <div className="mt-5 grid grid-cols-[44px_1fr_44px] items-center gap-3">
                   <button
                     className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
                     onClick={() => setQuantityDraft(Math.max(0, quantityDraft - 1))}
@@ -238,30 +244,61 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                   value={memo}
                   onChange={(event) => setMemo(event.target.value)}
                 />
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <button
-                    className="focus-ring flex items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-3 font-black text-white"
-                    onClick={() => {
-                      store.changeQuantity(order.id, quantityDraft, memo, client.managerName);
-                      setMemo("");
-                      alert("정상적으로 처리되었습니다.");
-                    }}
-                  >
-                    <Send size={17} />
-                    {cutoffPassed ? "변경 요청하기" : "변경 저장"}
-                  </button>
-                  <button
-                    className="focus-ring flex items-center justify-center gap-2 rounded-md border border-bapsim-red bg-white px-4 py-3 font-black text-bapsim-red"
-                    onClick={() => {
-                      if (window.confirm("오늘 식사를 정말 거절하시겠습니까?")) {
-                        store.changeQuantity(order.id, 0, memo || "식사 거절", client.managerName);
-                        setQuantityDraft(0);
-                        alert("식사 거절이 완료되었습니다.");
-                      }
-                    }}
-                  >
-                    오늘 식사 거절
-                  </button>
+                <div className="mt-4 flex flex-col gap-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      className="focus-ring flex items-center justify-center gap-2 rounded-md bg-stone-700 px-3 py-3 text-sm font-black text-white"
+                      onClick={() => {
+                        store.changeQuantity(order.id, quantityDraft, memo, client.managerName);
+                        setMemo("");
+                        alert("오늘 배달될 수량이 변경되었습니다.");
+                      }}
+                    >
+                      <Send size={16} />
+                      {cutoffPassed ? "이번만 변경 요청" : "이번만 변경"}
+                    </button>
+                    <button
+                      className="focus-ring flex items-center justify-center gap-2 rounded-md bg-bapsim-red px-3 py-3 text-sm font-black text-white"
+                      onClick={() => {
+                        store.changeQuantity(order.id, quantityDraft, memo, client.managerName);
+                        store.submitQuantityRequest(client.id, order.baseQuantity, quantityDraft, memo);
+                        setMemo("");
+                        alert("기본 식수 변경이 요청되었습니다. 관리자 승인 후 앞으로 계속 반영됩니다.");
+                      }}
+                    >
+                      <Send size={16} />
+                      앞으로 쭉 변경
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <button
+                      className="focus-ring flex items-center justify-center gap-2 rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
+                      onClick={() => {
+                        if (window.confirm("오늘 식사를 정말 거절하시겠습니까?")) {
+                          store.changeQuantity(order.id, 0, memo || "식사 거절", client.managerName);
+                          setQuantityDraft(0);
+                          alert("오늘 식사 거절이 완료되었습니다.");
+                        }
+                      }}
+                    >
+                      오늘 식사 거절
+                    </button>
+                    <button
+                      className="focus-ring flex items-center justify-center gap-2 rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
+                      onClick={() => {
+                        if (window.confirm("내일 식사를 미리 거절하시겠습니까? (내일 아침 배달이 취소됩니다)")) {
+                          const tomorrow = new Date();
+                          tomorrow.setDate(tomorrow.getDate() + 1);
+                          const dateString = tomorrow.toISOString().slice(0, 10);
+                          store.addHoliday(client.id, dateString, memo || "내일 식사 거절");
+                          setMemo("");
+                          alert("내일 식사 거절 처리가 완료되었습니다.");
+                        }
+                      }}
+                    >
+                      내일 미리 거절
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
