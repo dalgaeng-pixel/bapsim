@@ -659,8 +659,10 @@ function ClientManager({
 
   const copyInviteLink = (inviteCode: string) => {
     const link = getInviteLink(inviteCode);
-    navigator.clipboard.writeText(link).then(() => {
-      alert("초대 링크가 복사되었습니다!");
+    const message = `저희 밥심을 이용해주셔서 감사합니다. 아래 링크를 클릭하시면 간편 배달 화면으로 이동됩니다. 기본정보는 저희 식당에서 입력하여 제공되오니, 변동사항이 있을시 링크를 통하여 식사인원 변경이 있거나, 식사가 필요없을시 이용하여 주시기 바랍니다.\n\n${link}`;
+    
+    navigator.clipboard.writeText(message).then(() => {
+      alert("초대 링크와 안내 메시지가 복사되었습니다!\n(카카오톡 등에 바로 붙여넣기 하시면 됩니다.)");
     });
   };
 
