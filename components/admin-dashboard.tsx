@@ -212,7 +212,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       </header>
 
       <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 lg:grid-cols-[220px_1fr]">
-        <nav className="flex gap-2 overflow-x-auto lg:flex-col no-print">
+        <nav className="flex flex-wrap gap-2 lg:flex-col no-print">
           {tabs.map((item) => {
             const Icon = item.icon;
             return (
