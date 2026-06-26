@@ -3,7 +3,16 @@ import { ClientApp } from "@/components/client-app";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { loadAppStateFromSupabase } from "@/lib/supabase-state";
 
+import type { Metadata } from "next";
+
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ code: string }> }): Promise<Metadata> {
+  const { code } = await params;
+  return {
+    manifest: `/api/manifest?code=${code}`
+  };
+}
 
 export default async function ClientPage({ params }: { params: Promise<{ code: string }> }) {
   const resolvedParams = await params;
