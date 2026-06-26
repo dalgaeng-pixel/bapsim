@@ -156,8 +156,11 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
           <div className="flex items-center gap-2">
             <button
               className="relative focus-ring flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200"
-              onClick={subscribeToPushNotifications}
-              title="실시간 알림 켜기"
+              onClick={() => {
+                store.markNotificationsRead("admin");
+                subscribeToPushNotifications();
+              }}
+              title="실시간 알림 켜기 및 알림 읽음 처리"
             >
               <Bell size={16} />
               {store.unreadNotificationCount > 0 ? (
@@ -192,7 +195,12 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                     ? "bg-bapsim-red text-white"
                     : "border border-stone-200 bg-white text-stone-700"
                 }`}
-                onClick={() => setTab(item.id)}
+                onClick={() => {
+                  setTab(item.id);
+                  if (item.id === "important") {
+                    store.markNotificationsRead("admin");
+                  }
+                }}
               >
                 <Icon size={17} />
                 {item.label}

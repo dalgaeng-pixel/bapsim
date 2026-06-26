@@ -19,9 +19,8 @@ export async function syncAppStateDiffAction(diff: AppStateDiff) {
       const newAdminNotifications = diff.notifications.filter(
         (n) => n.target === "admin" && !n.read
       );
-      
-      // Notify asynchronously without blocking the response
-      Promise.allSettled(
+      // Notify asynchronously but ensure we await it before returning so Vercel doesn't kill the worker
+      await Promise.allSettled(
         newAdminNotifications.map((n) => sendWebPushNotification(n.title, n.body))
       );
     }
