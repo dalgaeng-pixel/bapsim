@@ -16,6 +16,7 @@ import { Logo } from "@/components/logo";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel } from "@/lib/status";
 import { useBapsimStore } from "@/lib/use-bapsim-store";
+import { usePWAInstall } from "@/lib/use-pwa-install";
 import type { AppState } from "@/lib/types";
 
 type ClientTab = "today" | "history" | "profile" | "alerts";
@@ -40,6 +41,7 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   const [addressDetail, setAddressDetail] = useState("");
   const [managerName, setManagerName] = useState("");
   const [managerPhone, setManagerPhone] = useState("");
+  const { deferredPrompt, promptInstall, isIOS, isInstalled } = usePWAInstall();
 
   const client = store.state.clients[0];
   const order = store.state.orders.find((item) => item.clientId === client?.id);
@@ -345,24 +347,36 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
 
         {tab === "profile" ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
-              <h2 className="text-xl font-black">📱 바탕화면에 앱 설치하기</h2>
-              <p className="mt-1 text-sm font-semibold text-stone-600">매번 링크를 찾을 필요 없이 편리하게 접속하세요!</p>
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="rounded-md bg-stone-50 p-3">
-                  <p className="font-bold text-stone-800">🍎 아이폰 (Safari 브라우저)</p>
-                  <p className="mt-1 text-stone-600">
-                    화면 하단의 <b>[공유 ⍐]</b> 버튼을 누른 후,<br/> <b>[홈 화면에 추가]</b>를 선택하세요.
-                  </p>
-                </div>
-                <div className="rounded-md bg-stone-50 p-3">
-                  <p className="font-bold text-stone-800">🤖 안드로이드 (크롬, 삼성인터넷)</p>
-                  <p className="mt-1 text-stone-600">
-                    화면 아래에 뜨는 <b>[홈 화면에 추가]</b> 팝업을 누르거나,<br/> 브라우저 우측 상단 메뉴(⋮)에서 <b>[앱 설치]</b>를 선택하세요.
-                  </p>
+            {!isInstalled && (
+              <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
+                <h2 className="text-xl font-black">📱 바탕화면에 앱 설치하기</h2>
+                <p className="mt-1 text-sm font-semibold text-stone-600">매번 링크를 찾을 필요 없이 편리하게 접속하세요!</p>
+                <div className="mt-4 space-y-3 text-sm">
+                  {deferredPrompt ? (
+                    <button
+                      className="focus-ring flex w-full items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-4 text-base font-black text-white shadow-md transition-transform hover:scale-[1.02] active:scale-95"
+                      onClick={promptInstall}
+                    >
+                      원클릭 앱 설치하기
+                    </button>
+                  ) : isIOS ? (
+                    <div className="rounded-md bg-stone-50 p-3">
+                      <p className="font-bold text-stone-800">🍎 아이폰 (Safari 브라우저)</p>
+                      <p className="mt-1 text-stone-600">
+                        화면 하단의 <b>[공유 ⍐]</b> 버튼을 누른 후,<br/> <b>[홈 화면에 추가]</b>를 선택하세요.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-stone-50 p-3">
+                      <p className="font-bold text-stone-800">🤖 안드로이드 (크롬, 삼성인터넷)</p>
+                      <p className="mt-1 text-stone-600">
+                        화면 아래에 뜨는 <b>[홈 화면에 추가]</b> 팝업을 누르거나,<br/> 브라우저 우측 상단 메뉴(⋮)에서 <b>[앱 설치]</b>를 선택하세요.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
               <h2 className="text-xl font-black">내 업체 정보</h2>
