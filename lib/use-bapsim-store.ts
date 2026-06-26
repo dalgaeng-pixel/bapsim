@@ -39,7 +39,11 @@ function writeState(state: AppState) {
     return;
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    // Ignore Storage access errors in strict browsers (like KakaoTalk)
+  }
 }
 
 import { syncAppStateDiffAction } from "@/app/actions/state";
@@ -115,13 +119,17 @@ export function useBapsimStore(initialState?: AppState) {
 
     // fallback for local storage if no initial state
     let nextState = createInitialState();
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        nextState = JSON.parse(saved) as AppState;
-      } catch {
-        nextState = createInitialState();
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          nextState = JSON.parse(saved) as AppState;
+        } catch {
+          nextState = createInitialState();
+        }
       }
+    } catch (e) {
+      // Ignore Storage access errors in strict browsers (like KakaoTalk)
     }
     setState(nextState);
     setLoaded(true);

@@ -1,13 +1,24 @@
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open("bapsim-shell-v1").then((cache) =>
-      cache.addAll(["/", "/admin", "/client", "/bapsim-logo.png"])
+    caches.open("bapsim-shell-v2").then((cache) =>
+      cache.addAll(["/", "/admin", "/bapsim-logo.png"])
     )
   );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== "bapsim-shell-v2") {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
   event.waitUntil(self.clients.claim());
 });
 
@@ -16,12 +27,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network First, falling back to cache
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(event.request);
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Optionally update cache here for dynamic caching, but for now we just return it
+        return networkResponse;
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      })
   );
 });

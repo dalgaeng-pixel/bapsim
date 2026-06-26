@@ -185,7 +185,7 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                     <Minus size={18} />
                   </button>
                   <input
-                    className="focus-ring h-11 rounded-md border border-stone-300 text-center text-xl font-black"
+                    className="focus-ring h-11 w-full min-w-0 rounded-md border border-stone-300 text-center text-xl font-black"
                     inputMode="numeric"
                     value={quantityDraft}
                     onChange={(event) => setQuantityDraft(Number(event.target.value.replace(/\D/g, "")) || 0)}
