@@ -1,6 +1,6 @@
 # Developer Notes
 
-Last updated: 2026-06-26
+Last updated: 2026-06-26 09:15 KST
 
 ## Purpose
 
@@ -11,8 +11,9 @@ This file is the first stop for the next agent or developer continuing the proje
 - App name: 밥심 식사배달관리
 - Local path: `C:\Users\이나라솔-PC\Desktop\앱개발\bapsim-meal-manager`
 - Framework: Next.js 15, React 19, TypeScript, Tailwind CSS
-- Current storage mode: localStorage-first MVP
-- Supabase: schema and mapping code prepared, not connected to a real project yet
+- Current storage mode: **Supabase connected** (localStorage fallback if env vars missing)
+- Supabase project: `babsim` at `https://fnfdudfzasgaukpfmxkv.supabase.co`
+- Supabase schema: `docs/supabase-schema.sql` + `docs/supabase-rls-policies.sql` applied
 - PWA: manifest, service worker, installable HTTPS deployment prepared
 - Sites project ID: `appgprj_6a3db2f531688191acc48c3af9f4842c`
 - Production URL: `https://bapsim-meal-delivery.workspace-398477.chatgpt-team.site`
@@ -20,15 +21,13 @@ This file is the first stop for the next agent or developer continuing the proje
 
 ## Important Current Caveats
 
-- The production Sites deployment is a static PWA build. It is suitable for mobile install testing and UI flow testing.
-- Because the Sites deployment is static, `/api/state` is handled by the generated worker fallback and returns local mode. Real Supabase writes are not active in the deployed app yet.
-- The local dev app can still run the Next route handler version of `/api/state`.
-- For real production DB persistence, either use a deployment target that supports Next server routes or replace the whole-state sync bridge with explicit server actions/API endpoints on the chosen backend.
-- Sites does not accept SVG/PNG files as worker modules at the archive root. The build script therefore emits:
-  - `dist/server/index.js` as the worker entrypoint
-  - `dist/client/*` as static assets
-- Sites public internet publishing is disabled for the current workspace. The deployed Sites URL requires ChatGPT sign-in unless access policy changes become available.
-- For immediate no-login mobile testing, use localtunnel as a temporary HTTPS tunnel. Example URL generated during testing: `https://fine-pears-exist.loca.lt`.
+- **`output: "export"` has been removed** from `next.config.mjs`. The app now runs in server mode for API route support.
+- `/api/state` route is set to `force-dynamic` and queries Supabase on every request.
+- The Supabase connection uses `service_role` key on the server side. This key must never be exposed to the browser.
+- The whole-state sync bridge (`/api/state` POST) uploads the entire app state on every change. This works for MVP but should be replaced with granular server actions.
+- For static Sites deployment, use `npm run build:static` instead of `npm run build`.
+- Sites public internet publishing is disabled for the current workspace. The deployed Sites URL requires ChatGPT sign-in.
+- For immediate no-login mobile testing, use localtunnel as a temporary HTTPS tunnel.
 
 ## How To Run Locally
 
@@ -72,15 +71,25 @@ Run these before handing off code changes:
 ```bash
 npm run typecheck
 npm run build
+npm run test:supabase
 npm audit --omit=dev
 ```
 
 Expected current result:
 
 - TypeScript passes.
-- Build creates `out/` and `dist/`.
-- `dist/server/index.js` exists.
+- `npm run build` creates `.next/` (server mode build).
+- `npm run test:supabase` shows all 10 tables with ✅.
 - `npm audit --omit=dev` reports 0 vulnerabilities.
+
+For static Sites build:
+
+```bash
+npm run build:static
+```
+
+- Creates `out/` and `dist/`.
+- `dist/server/index.js` exists.
 
 ## Deployment Notes
 
@@ -111,7 +120,9 @@ Do not persist source repository tokens in Git remotes or files. Use per-command
 - `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows.
 - `app/api/state/route.ts`: Next route handler for state load/save when server runtime is available.
 - `scripts/prepare-dist.mjs`: converts Next static export to Sites-compatible `dist/server` + `dist/client` layout.
-- `docs/supabase-schema.sql`: target Supabase schema.
+- `scripts/test-supabase.mjs`: Supabase connection and table verification script.
+- `docs/supabase-schema.sql`: Supabase table schema (applied).
+- `docs/supabase-rls-policies.sql`: RLS policies and service_role grants (applied).
 - `docs/mobile-test.md`: mobile browser/PWA installation notes.
 
 ## Data Model Summary
@@ -141,11 +152,11 @@ The app state currently contains:
 
 ## Next Recommended Work
 
-1. Test the HTTPS URL on Android Chrome and iPhone Safari.
-2. For no-login temporary testing, use localtunnel.
-3. For stable customer testing, choose a public hosting provider such as Vercel, Netlify, or Cloudflare Pages.
-4. Create a Supabase project and run `docs/supabase-schema.sql`.
-5. Add `.env.local` locally and production env vars in the deployment platform.
+1. ~~Create a Supabase project and run schema SQL.~~ ✅ Done (2026-06-26)
+2. ~~Add `.env.local` with Supabase credentials.~~ ✅ Done (2026-06-26)
+3. Test the HTTPS URL on Android Chrome and iPhone Safari.
+4. For no-login temporary testing, use localtunnel.
+5. For stable customer testing, deploy to Vercel (supports server-mode Next.js with API routes).
 6. Replace whole-state sync with granular server workflows:
    - create/update client
    - change quantity

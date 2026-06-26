@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/prepare-dist.mjs",
+    "build": "next build",
+    "build:static": "NEXT_OUTPUT=export next build && node scripts/prepare-dist.mjs",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:supabase": "node scripts/test-supabase.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
