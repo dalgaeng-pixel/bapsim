@@ -923,7 +923,7 @@ function ClientManager({
 
             <button
               className="focus-ring mt-4 flex w-full justify-center rounded-lg bg-stone-800 py-3 text-sm font-bold text-white"
-              onClick={() => copyInviteLink(qrClient.inviteCode)}
+              onClick={() => copyInviteLink(qrClient)}
             >
               링크 함께 복사하기
             </button>
