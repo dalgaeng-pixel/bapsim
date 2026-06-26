@@ -26,8 +26,8 @@ const clientTabs = [
   { id: "alerts", label: "알림", icon: Bell }
 ] as const;
 
-export function ClientApp() {
-  const store = useBapsimStore();
+export function ClientApp({ initialState }: { initialState?: AppState }) {
+  const store = useBapsimStore(initialState);
   const [pin, setPin] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [pinError, setPinError] = useState("");

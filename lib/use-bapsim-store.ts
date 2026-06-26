@@ -42,37 +42,54 @@ function writeState(state: AppState) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-async function fetchRemoteState(): Promise<RemoteStateResponse> {
-  const response = await fetch("/api/state", {
-    cache: "no-store"
-  });
+import { syncAppStateDiffAction } from "@/app/actions/state";
+import type { AppStateDiff } from "@/lib/supabase-state";
 
-  if (!response.ok) {
-    if (response.status === 404) {
-      return {
-        configured: false,
-        mode: "local"
-      };
+function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
+  const diff: AppStateDiff = {};
+
+  const arrayKeys: (keyof AppState)[] = [
+    "clients",
+    "mealTypes",
+    "defaultQuantities",
+    "orders",
+    "orderChangeLogs",
+    "changeRequests",
+    "holidays",
+    "notifications",
+    "auditLogs"
+  ];
+
+  for (const key of arrayKeys) {
+    if (key === "deliveryOverrides") continue;
+    
+    const prevArr = prev[key] as any[];
+    const nextArr = next[key] as any[];
+    
+    const changed = nextArr.filter((nextItem) => {
+      const prevItem = prevArr.find((p) => p.id === nextItem.id);
+      return !prevItem || prevItem !== nextItem;
+    });
+
+    if (changed.length > 0) {
+      (diff as any)[key] = changed;
     }
-
-    return {
-      configured: true,
-      mode: "supabase-error",
-      message: await response.text()
-    };
   }
 
-  return (await response.json()) as RemoteStateResponse;
-}
+  // Handle deliveryOverrides (Record<string, string[]>)
+  const overridesDiff: Record<string, string[]> = {};
+  let hasOverridesDiff = false;
+  for (const key of Object.keys(next.deliveryOverrides)) {
+    if (prev.deliveryOverrides[key] !== next.deliveryOverrides[key]) {
+      overridesDiff[key] = next.deliveryOverrides[key];
+      hasOverridesDiff = true;
+    }
+  }
+  if (hasOverridesDiff) {
+    diff.deliveryOverrides = overridesDiff;
+  }
 
-async function writeRemoteState(state: AppState) {
-  await fetch("/api/state", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(state)
-  });
+  return diff;
 }
 
 function isImportantChange(beforeQuantity: number, afterQuantity: number) {
@@ -85,76 +102,41 @@ function createPin() {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
 
-export function useBapsimStore() {
-  const [state, setState] = useState<AppState>(() => createInitialState());
-  const [loaded, setLoaded] = useState(false);
-  const [storageMode, setStorageMode] = useState<StorageMode>("local");
-  const remoteEnabledRef = useRef(false);
+export function useBapsimStore(initialState?: AppState) {
+  const [state, setState] = useState<AppState>(() => initialState ?? createInitialState());
+  const [loaded, setLoaded] = useState(!!initialState);
+  const [storageMode, setStorageMode] = useState<StorageMode>(initialState ? "supabase" : "local");
+  const remoteEnabledRef = useRef(!!initialState);
 
   useEffect(() => {
-    let active = true;
-
-    async function loadState() {
-      let nextState = createInitialState();
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-
-      if (saved) {
-        try {
-          nextState = JSON.parse(saved) as AppState;
-        } catch {
-          nextState = createInitialState();
-        }
-      }
-
-      setState(nextState);
-
-      try {
-        const remote = await fetchRemoteState();
-        if (!active) {
-          return;
-        }
-
-        if (!remote.configured) {
-          remoteEnabledRef.current = false;
-          setStorageMode("local");
-          setLoaded(true);
-          return;
-        }
-
-        remoteEnabledRef.current = true;
-        setStorageMode(remote.mode === "supabase-error" ? "supabase-error" : "supabase");
-
-        if (remote.state && remote.hasData) {
-          setState(remote.state);
-          writeState(remote.state);
-        } else {
-          await writeRemoteState(nextState);
-        }
-      } catch {
-        if (active) {
-          remoteEnabledRef.current = false;
-          setStorageMode("supabase-error");
-        }
-      } finally {
-        if (active) {
-          setLoaded(true);
-        }
-      }
+    if (initialState) {
+      return;
     }
 
-    void loadState();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+    // fallback for local storage if no initial state
+    let nextState = createInitialState();
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        nextState = JSON.parse(saved) as AppState;
+      } catch {
+        nextState = createInitialState();
+      }
+    }
+    setState(nextState);
+    setLoaded(true);
+  }, [initialState]);
 
   const commit = useCallback((updater: (previous: AppState) => AppState) => {
     setState((previous) => {
       const next = updater(previous);
       writeState(next);
+      
       if (remoteEnabledRef.current) {
-        void writeRemoteState(next);
+        const diff = calculateDiff(previous, next);
+        if (Object.keys(diff).length > 0) {
+          void syncAppStateDiffAction(diff);
+        }
       }
       return next;
     });

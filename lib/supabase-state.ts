@@ -445,3 +445,196 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     "order_date,meal_type_id"
   );
 }
+
+export type AppStateDiff = {
+  clients?: Client[];
+  mealTypes?: MealType[];
+  defaultQuantities?: DefaultMealQuantity[];
+  orders?: DailyMealOrder[];
+  orderChangeLogs?: OrderChangeLog[];
+  changeRequests?: ChangeRequest[];
+  holidays?: Holiday[];
+  notifications?: AppNotification[];
+  auditLogs?: AdminAuditLog[];
+  deliveryOverrides?: Record<string, string[]>;
+};
+
+export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: AppStateDiff) {
+  if (diff.clients?.length) {
+    await upsertRows(
+      client,
+      "clients",
+      diff.clients.map((item) => ({
+        id: item.id,
+        name: item.name,
+        address: item.address,
+        address_detail: item.addressDetail,
+        manager_name: item.managerName,
+        manager_phone: item.managerPhone,
+        delivery_memo: item.deliveryMemo,
+        delivery_order: item.deliveryOrder,
+        status: item.status,
+        invite_code: item.inviteCode,
+        invite_pin: item.invitePin,
+        last_seen_at: item.lastSeenAt ?? null
+      }))
+    );
+  }
+
+  if (diff.mealTypes?.length) {
+    await upsertRows(
+      client,
+      "meal_types",
+      diff.mealTypes.map((item) => ({
+        id: item.id,
+        name: item.name,
+        cutoff_time: item.cutoffTime,
+        enabled: item.enabled
+      }))
+    );
+  }
+
+  if (diff.defaultQuantities?.length) {
+    await upsertRows(
+      client,
+      "default_meal_quantities",
+      diff.defaultQuantities.map((item) => ({
+        id: item.id,
+        client_id: item.clientId,
+        meal_type_id: item.mealTypeId,
+        weekday: item.weekday,
+        quantity: item.quantity
+      }))
+    );
+  }
+
+  if (diff.orders?.length) {
+    await upsertRows(
+      client,
+      "daily_meal_orders",
+      diff.orders.map((item) => ({
+        id: item.id,
+        order_date: item.date,
+        client_id: item.clientId,
+        meal_type_id: item.mealTypeId,
+        base_quantity: item.baseQuantity,
+        final_quantity: item.finalQuantity,
+        status: item.status,
+        memo: item.memo ?? null,
+        requires_review: item.requiresReview,
+        acknowledged: item.acknowledged,
+        updated_at: item.updatedAt
+      }))
+    );
+  }
+
+  if (diff.orderChangeLogs?.length) {
+    await upsertRows(
+      client,
+      "order_change_logs",
+      diff.orderChangeLogs.map((item) => ({
+        id: item.id,
+        order_id: item.orderId,
+        client_id: item.clientId,
+        meal_type_id: item.mealTypeId,
+        order_date: item.date,
+        actor_type: item.actorType,
+        actor_name: item.actorName,
+        before_quantity: item.beforeQuantity,
+        after_quantity: item.afterQuantity,
+        memo: item.memo ?? null,
+        created_at: item.createdAt
+      }))
+    );
+  }
+
+  if (diff.changeRequests?.length) {
+    await upsertRows(
+      client,
+      "change_requests",
+      diff.changeRequests.map((item) => ({
+        id: item.id,
+        type: item.type,
+        status: item.status,
+        client_id: item.clientId,
+        order_id: item.orderId ?? null,
+        meal_type_id: item.mealTypeId ?? null,
+        order_date: item.date ?? null,
+        current_quantity: item.currentQuantity ?? null,
+        requested_quantity: item.requestedQuantity ?? null,
+        current_address: item.currentAddress ?? null,
+        requested_address: item.requestedAddress ?? null,
+        current_address_detail: item.currentAddressDetail ?? null,
+        requested_address_detail: item.requestedAddressDetail ?? null,
+        current_manager_name: item.currentManagerName ?? null,
+        requested_manager_name: item.requestedManagerName ?? null,
+        current_manager_phone: item.currentManagerPhone ?? null,
+        requested_manager_phone: item.requestedManagerPhone ?? null,
+        memo: item.memo ?? null,
+        requested_at: item.requestedAt,
+        resolved_at: item.resolvedAt ?? null,
+        resolved_by: item.resolvedBy ?? null
+      }))
+    );
+  }
+
+  if (diff.holidays?.length) {
+    await upsertRows(
+      client,
+      "holidays",
+      diff.holidays.map((item) => ({
+        id: item.id,
+        holiday_date: item.date,
+        name: item.name,
+        client_id: item.clientId ?? null
+      }))
+    );
+  }
+
+  if (diff.notifications?.length) {
+    await upsertRows(
+      client,
+      "notifications",
+      diff.notifications.map((item) => ({
+        id: item.id,
+        target: item.target,
+        client_id: item.clientId ?? null,
+        title: item.title,
+        body: item.body,
+        read: item.read,
+        created_at: item.createdAt
+      }))
+    );
+  }
+
+  if (diff.auditLogs?.length) {
+    await upsertRows(
+      client,
+      "admin_audit_logs",
+      diff.auditLogs.map((item) => ({
+        id: item.id,
+        action: item.action,
+        admin_name: item.adminName,
+        target_label: item.targetLabel,
+        detail: item.detail,
+        created_at: item.createdAt
+      }))
+    );
+  }
+
+  if (diff.deliveryOverrides && Object.keys(diff.deliveryOverrides).length > 0) {
+    await upsertRows(
+      client,
+      "delivery_order_overrides",
+      Object.entries(diff.deliveryOverrides).map(([key, clientOrder]) => {
+        const [orderDate, mealTypeId] = key.split(":");
+        return {
+          order_date: orderDate,
+          meal_type_id: mealTypeId,
+          client_order: clientOrder
+        };
+      }),
+      "order_date,meal_type_id"
+    );
+  }
+}

@@ -88,8 +88,8 @@ function mapUrl(address: string) {
   return `https://map.naver.com/v5/search/${encodeURIComponent(address)}`;
 }
 
-export function AdminDashboard() {
-  const store = useBapsimStore();
+export function AdminDashboard({ initialState }: { initialState?: AppState }) {
+  const store = useBapsimStore(initialState);
   const [tab, setTab] = useState<TabId>("overview");
   const [adminName, setAdminName] = useState("밥심관리자");
   const [phone, setPhone] = useState("010-0000-0000");
