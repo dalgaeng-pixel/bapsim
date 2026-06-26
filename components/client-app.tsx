@@ -60,10 +60,22 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
     [client?.id, store.state.notifications]
   );
 
-  if (!store.loaded || !client || !order) {
-    return <div className="p-8 text-sm font-semibold text-stone-600">불러오는 중</div>;
+  if (!store.loaded) {
+    return <div className="p-8 text-sm font-semibold text-stone-600">불러오는 중...</div>;
   }
 
+  if (!client || !order) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-8 text-center">
+        <div>
+          <h2 className="text-xl font-black text-stone-800">등록된 거래처가 없습니다</h2>
+          <p className="mt-2 text-sm font-semibold text-stone-600">
+            관리자 화면에서 거래처를 먼저 등록해주세요.
+          </p>
+        </div>
+      </div>
+    );
+  }
   if (!loggedIn) {
     return (
       <main className="min-h-screen px-4 py-6">
