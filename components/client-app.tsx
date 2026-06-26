@@ -220,6 +220,7 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                     onClick={() => {
                       store.changeQuantity(order.id, quantityDraft, memo, client.managerName);
                       setMemo("");
+                      alert("정상적으로 처리되었습니다.");
                     }}
                   >
                     <Send size={17} />
@@ -228,8 +229,11 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                   <button
                     className="focus-ring flex items-center justify-center gap-2 rounded-md border border-bapsim-red bg-white px-4 py-3 font-black text-bapsim-red"
                     onClick={() => {
-                      store.changeQuantity(order.id, 0, memo || "식사 거절", client.managerName);
-                      setQuantityDraft(0);
+                      if (window.confirm("오늘 식사를 정말 거절하시겠습니까?")) {
+                        store.changeQuantity(order.id, 0, memo || "식사 거절", client.managerName);
+                        setQuantityDraft(0);
+                        alert("식사 거절이 완료되었습니다.");
+                      }
                     }}
                   >
                     오늘 식사 거절
