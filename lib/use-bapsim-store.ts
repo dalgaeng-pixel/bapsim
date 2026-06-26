@@ -553,7 +553,7 @@ export function useBapsimStore(initialState?: AppState) {
       commit((previous) => ({
         ...previous,
         notifications: previous.notifications.map((notification) =>
-          notification.target === target && (!clientId || notification.clientId === clientId)
+          notification.target === target && (!clientId || notification.clientId === clientId) && !notification.read
             ? { ...notification, read: true }
             : notification
         )
