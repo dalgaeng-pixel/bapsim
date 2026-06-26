@@ -197,3 +197,15 @@ alter table public.delivery_order_overrides enable row level security;
 insert into public.meal_types (name, cutoff_time, enabled)
 select '점심', '10:00', true
 where not exists (select 1 from public.meal_types where name = '점심');
+
+create table if not exists public.push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  admin_id text not null,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.push_subscriptions enable row level security;
+

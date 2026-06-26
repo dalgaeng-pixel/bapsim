@@ -2,6 +2,7 @@
 
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { type AppStateDiff, saveAppStateDiffToSupabase } from "@/lib/supabase-state";
+import { sendWebPushNotification } from "@/app/actions/push";
 
 export async function syncAppStateDiffAction(diff: AppStateDiff) {
   const supabase = createSupabaseAdminClient();
@@ -12,6 +13,19 @@ export async function syncAppStateDiffAction(diff: AppStateDiff) {
 
   try {
     await saveAppStateDiffToSupabase(supabase, diff);
+
+    // Send push notifications for new admin notifications
+    if (diff.notifications && diff.notifications.length > 0) {
+      const newAdminNotifications = diff.notifications.filter(
+        (n) => n.target === "admin" && !n.read
+      );
+      
+      // Notify asynchronously without blocking the response
+      Promise.allSettled(
+        newAdminNotifications.map((n) => sendWebPushNotification(n.title, n.body))
+      );
+    }
+
     return { success: true };
   } catch (error) {
     console.error("Failed to sync state diff:", error);

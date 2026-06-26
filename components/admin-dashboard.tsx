@@ -25,11 +25,14 @@ import {
   Truck,
   X,
   Link,
-  QrCode
+  QrCode,
+  LogOut
 } from "lucide-react";
 import { useMemo, useState, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Logo } from "@/components/logo";
+import { logoutAdminAction } from "@/app/actions/auth";
+import { subscribeToPushNotifications } from "@/lib/push-client";
 import { buildDeliveryRows, buildMonthlyRows, downloadCsv } from "@/lib/export";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel, requestTypeLabel } from "@/lib/status";
@@ -95,9 +98,6 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const store = useBapsimStore(initialState);
   const [tab, setTab] = useState<TabId>("overview");
   const [adminName, setAdminName] = useState("밥심관리자");
-  const [phone, setPhone] = useState("010-0000-0000");
-  const [code, setCode] = useState("");
-  const [loggedIn, setLoggedIn] = useState(false);
   const [search, setSearch] = useState("");
 
   const { state, activeMealType, totals } = store;
@@ -136,51 +136,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
     return <div className="p-8 text-sm font-semibold text-stone-600">불러오는 중</div>;
   }
 
-  if (!loggedIn) {
-    return (
-      <main className="min-h-screen px-4 py-6 sm:px-6">
-        <section className="mx-auto flex min-h-[calc(100vh-48px)] max-w-md flex-col justify-center">
-          <div className="rounded-lg border border-stone-200 bg-white p-6 shadow-soft">
-            <Logo />
-            <div className="mt-8 space-y-4">
-              <label className="block">
-                <span className="text-sm font-bold text-stone-700">관리자 이름</span>
-                <input
-                  className="focus-ring mt-2 w-full rounded-md border border-stone-300 px-3 py-3"
-                  value={adminName}
-                  onChange={(event) => setAdminName(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm font-bold text-stone-700">전화번호</span>
-                <input
-                  className="focus-ring mt-2 w-full rounded-md border border-stone-300 px-3 py-3"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                />
-              </label>
-              <label className="block">
-                <span className="text-sm font-bold text-stone-700">인증번호</span>
-                <input
-                  className="focus-ring mt-2 w-full rounded-md border border-stone-300 px-3 py-3"
-                  placeholder="6자리"
-                  value={code}
-                  onChange={(event) => setCode(event.target.value)}
-                />
-              </label>
-              <button
-                className="focus-ring flex w-full items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-3 font-black text-white"
-                onClick={() => setLoggedIn(Boolean(phone && code.length >= 4))}
-              >
-                <ShieldCheck size={18} />
-                관리자 로그인
-              </button>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
+
 
   return (
     <main className="min-h-screen">
@@ -198,15 +154,28 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="relative rounded-full border border-stone-200 bg-white p-2">
-              <Bell size={18} />
+            <button
+              className="relative focus-ring flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200"
+              onClick={subscribeToPushNotifications}
+              title="실시간 알림 켜기"
+            >
+              <Bell size={16} />
               {store.unreadNotificationCount > 0 ? (
-                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-bapsim-red px-1 text-xs font-black text-white">
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-bapsim-red px-1 text-[10px] font-black text-white">
                   {store.unreadNotificationCount}
                 </span>
               ) : null}
-            </span>
+            </button>
             <span className="hidden text-sm font-bold text-stone-700 sm:inline">{adminName}</span>
+            <form action={logoutAdminAction}>
+              <button
+                type="submit"
+                className="flex items-center gap-1.5 rounded-full bg-stone-100 px-3 py-1.5 text-xs font-bold text-stone-600 hover:bg-stone-200"
+              >
+                <LogOut size={14} />
+                로그아웃
+              </button>
+            </form>
           </div>
         </div>
       </header>
