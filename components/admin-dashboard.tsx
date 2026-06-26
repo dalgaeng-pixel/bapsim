@@ -23,9 +23,12 @@ import {
   Settings,
   ShieldCheck,
   Truck,
-  X
+  X,
+  Link,
+  QrCode
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Logo } from "@/components/logo";
 import { buildDeliveryRows, buildMonthlyRows, downloadCsv } from "@/lib/export";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
@@ -666,6 +669,21 @@ function ClientManager({
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormState>(emptyClientForm);
   const [error, setError] = useState("");
+  const [qrClient, setQrClient] = useState<Client | null>(null);
+
+  const getInviteLink = (inviteCode: string) => {
+    if (typeof window !== "undefined") {
+      return `${window.location.origin}/client/${inviteCode}`;
+    }
+    return "";
+  };
+
+  const copyInviteLink = (inviteCode: string) => {
+    const link = getInviteLink(inviteCode);
+    navigator.clipboard.writeText(link).then(() => {
+      alert("초대 링크가 복사되었습니다!");
+    });
+  };
 
   const startCreate = () => {
     setEditingClientId(null);
@@ -846,6 +864,20 @@ function ClientManager({
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black"
+                onClick={() => copyInviteLink(client.inviteCode)}
+              >
+                <Link size={15} />
+                링크 복사
+              </button>
+              <button
+                className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black"
+                onClick={() => setQrClient(client)}
+              >
+                <QrCode size={15} />
+                QR코드
+              </button>
+              <button
+                className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black ml-auto"
                 onClick={() => startEdit(client)}
               >
                 <Pencil size={15} />
@@ -869,6 +901,43 @@ function ClientManager({
           </div>
         ))}
       </div>
+
+      {qrClient ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-stone-800">{qrClient.name}</h3>
+              <button
+                className="focus-ring rounded-full p-2 text-stone-500"
+                onClick={() => setQrClient(null)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="mt-1 text-sm font-semibold text-stone-600">거래처 전용 접속 QR코드</p>
+            
+            <div className="mt-8 flex justify-center">
+              <div className="rounded-xl border-4 border-bapsim-red p-4">
+                <QRCodeSVG value={getInviteLink(qrClient.inviteCode)} size={200} />
+              </div>
+            </div>
+
+            <div className="mt-8 rounded-lg bg-stone-100 p-3 text-center">
+              <p className="text-sm font-bold text-stone-700">고유 PIN 번호</p>
+              <p className="mt-1 text-3xl font-black tracking-[0.2em] text-bapsim-red">
+                {qrClient.invitePin}
+              </p>
+            </div>
+
+            <button
+              className="focus-ring mt-4 flex w-full justify-center rounded-lg bg-stone-800 py-3 text-sm font-bold text-white"
+              onClick={() => copyInviteLink(qrClient.inviteCode)}
+            >
+              링크 함께 복사하기
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
