@@ -402,14 +402,14 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                 </div>
               </div>
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">순서</th>
                       <th>업체</th>
                       <th>수량</th>
                       <th>주소</th>
-                      <th>배달 메모</th>
+                      <th className="hidden md:table-cell">배달 메모</th>
                       <th className="no-print">순서 변경</th>
                     </tr>
                   </thead>
@@ -432,7 +432,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                               {client?.address}
                             </a>
                           </td>
-                          <td>{client?.deliveryMemo}</td>
+                          <td className="hidden md:table-cell">{client?.deliveryMemo}</td>
                           <td className="no-print">
                             <div className="flex gap-1">
                               <button
@@ -490,14 +490,14 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                 </button>
               </div>
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+                <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">업체</th>
-                      <th>기본</th>
+                      <th className="hidden sm:table-cell">기본</th>
                       <th>최종</th>
-                      <th>거절</th>
-                      <th>변경</th>
+                      <th className="hidden sm:table-cell">거절</th>
+                      <th className="hidden sm:table-cell">변경</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -506,12 +506,12 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                       return (
                         <tr key={client.id} className="border-b border-stone-100">
                           <td className="py-3 font-black">{client.name}</td>
-                          <td>{orders.reduce((sum, order) => sum + order.baseQuantity, 0)}개</td>
+                          <td className="hidden sm:table-cell">{orders.reduce((sum, order) => sum + order.baseQuantity, 0)}개</td>
                           <td className="font-black text-bapsim-red">
                             {orders.reduce((sum, order) => sum + order.finalQuantity, 0)}개
                           </td>
-                          <td>{orders.filter((order) => order.status === "rejected").length}건</td>
-                          <td>{orders.filter((order) => order.status === "changed").length}건</td>
+                          <td className="hidden sm:table-cell">{orders.filter((order) => order.status === "rejected").length}건</td>
+                          <td className="hidden sm:table-cell">{orders.filter((order) => order.status === "changed").length}건</td>
                         </tr>
                       );
                     })}
@@ -583,15 +583,15 @@ function OrderTable({
 }) {
   return (
     <div className="mt-4 overflow-x-auto">
-      <table className="w-full min-w-[880px] border-collapse text-left text-sm">
+      <table className="w-full border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
             <th className="py-3">업체</th>
             <th>기본</th>
             <th>최종</th>
             <th>상태</th>
-            <th>주소</th>
-            <th>배달 메모</th>
+            <th className="hidden md:table-cell">주소</th>
+            <th className="hidden md:table-cell">배달 메모</th>
             <th className="no-print">확인</th>
           </tr>
         </thead>
@@ -607,7 +607,7 @@ function OrderTable({
                 <td>{order.baseQuantity}개</td>
                 <td className="text-lg font-black text-bapsim-red">{order.finalQuantity}개</td>
                 <td><StatusBadge order={order} /></td>
-                <td>
+                <td className="hidden md:table-cell">
                   <a
                     className="inline-flex items-center gap-1 font-bold text-bapsim-red"
                     href={mapUrl(client?.address ?? "")}
@@ -618,7 +618,7 @@ function OrderTable({
                     {client?.address}
                   </a>
                 </td>
-                <td>{client?.deliveryMemo}</td>
+                <td className="hidden md:table-cell">{client?.deliveryMemo}</td>
                 <td className="no-print">
                   {order.requiresReview && !order.acknowledged ? (
                     <button
@@ -742,7 +742,7 @@ function ClientManager({
           </p>
         </div>
         <button
-          className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-3 text-sm font-black text-white"
+          className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-3 text-sm font-black text-white w-full md:w-auto"
           onClick={startCreate}
         >
           <PlusCircle size={17} />
@@ -838,13 +838,13 @@ function ClientManager({
                   </span>
                 </div>
                 <a
-                  className="mt-2 inline-flex items-center gap-1 text-sm font-bold text-bapsim-red"
+                  className="mt-2 inline-flex items-start gap-1 text-sm font-bold text-bapsim-red break-all whitespace-normal"
                   href={mapUrl(client.address)}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  <MapPin size={15} />
-                  {client.address}
+                  <MapPin size={15} className="mt-0.5 shrink-0" />
+                  <span>{client.address}</span>
                 </a>
                 <p className="mt-1 text-sm text-stone-600">{client.addressDetail}</p>
                 <p className="mt-3 text-sm font-semibold text-stone-700">
