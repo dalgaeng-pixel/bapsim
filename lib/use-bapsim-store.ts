@@ -11,7 +11,8 @@ import type {
   Client,
   DailyMealOrder,
   DefaultMealQuantity,
-  OrderChangeLog
+  OrderChangeLog,
+  Holiday
 } from "@/lib/types";
 
 const STORAGE_KEY = "bapsim-meal-manager-state-v2";
