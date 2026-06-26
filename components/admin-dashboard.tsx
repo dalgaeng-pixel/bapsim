@@ -34,7 +34,7 @@ import { buildDeliveryRows, buildMonthlyRows, downloadCsv } from "@/lib/export";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel, requestTypeLabel } from "@/lib/status";
 import { useBapsimStore } from "@/lib/use-bapsim-store";
-import type { Client, DailyMealOrder } from "@/lib/types";
+import type { Client, DailyMealOrder, AppState } from "@/lib/types";
 
 const tabs = [
   { id: "overview", label: "오늘 현황", icon: ListChecks },

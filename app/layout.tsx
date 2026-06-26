@@ -30,7 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body>
+      <body className="overflow-x-hidden bg-stone-50 text-stone-900 selection:bg-bapsim-red/20">
         <PwaRegister />
         {children}
       </body>

@@ -16,6 +16,7 @@ import { Logo } from "@/components/logo";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel } from "@/lib/status";
 import { useBapsimStore } from "@/lib/use-bapsim-store";
+import type { AppState } from "@/lib/types";
 
 type ClientTab = "today" | "history" | "profile" | "alerts";
 
