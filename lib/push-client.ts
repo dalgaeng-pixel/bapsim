@@ -1,6 +1,9 @@
 export async function subscribeToPushNotifications() {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    alert("이 브라우저는 푸시 알림을 지원하지 않습니다.");
+    alert(
+      "카카오톡 등 일부 브라우저에서는 푸시 알림을 지원하지 않습니다.\n\n" +
+      "알림을 받으시려면 아이폰은 Safari, 안드로이드는 Chrome 브라우저로 접속한 뒤 '홈 화면에 추가(앱 설치)'를 진행해주세요."
+    );
     return false;
   }
 
