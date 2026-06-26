@@ -26,7 +26,8 @@ import {
   X,
   Link,
   QrCode,
-  LogOut
+  LogOut,
+  Trash2
 } from "lucide-react";
 import { useMemo, useState, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -874,6 +875,17 @@ function ClientManager({
               >
                 <Power size={15} />
                 {client.status === "active" ? "일시중지" : "사용 재개"}
+              </button>
+              <button
+                className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 text-red-600 px-3 py-2 text-sm font-black"
+                onClick={() => {
+                  if (window.confirm(`정말 '${client.name}' 업체를 완전히 삭제하시겠습니까? (이 작업은 되돌릴 수 없으며 주문 내역도 함께 삭제됩니다)`)) {
+                    store.deleteClientRecord(client.id, adminName);
+                  }
+                }}
+              >
+                <Trash2 size={15} />
+                삭제
               </button>
             </div>
           </div>

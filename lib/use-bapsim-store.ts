@@ -806,6 +806,38 @@ export function useBapsimStore(initialState?: AppState) {
     [commit]
   );
 
+  const deleteClientRecord = useCallback(
+    (clientId: string, adminName: string) => {
+      commit((previous) => {
+        const client = previous.clients.find((item) => item.id === clientId);
+        if (!client) {
+          return previous;
+        }
+
+        // Also remove related data to keep state clean (in actual DB, ON DELETE CASCADE would handle this, but for local state we should filter them out)
+        return {
+          ...previous,
+          clients: previous.clients.filter((item) => item.id !== clientId),
+          orders: previous.orders.filter((item) => item.clientId !== clientId),
+          defaultQuantities: previous.defaultQuantities.filter((item) => item.clientId !== clientId),
+          changeRequests: previous.changeRequests.filter((item) => item.clientId !== clientId),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "delete_client",
+              adminName,
+              targetLabel: client.name,
+              detail: "거래처 삭제",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
   return {
     state,
     loaded,
@@ -831,6 +863,7 @@ export function useBapsimStore(initialState?: AppState) {
     toggleClientStatus,
     resetClientPin,
     submitQuantityRequest,
-    addHoliday
+    addHoliday,
+    deleteClientRecord
   };
 }

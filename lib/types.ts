@@ -16,7 +16,8 @@ export type AuditAction =
   | "reject_request"
   | "acknowledge_change"
   | "reset_pin"
-  | "change_delivery_order";
+  | "change_delivery_order"
+  | "delete_client";
 
 export interface Client {
   id: string;
