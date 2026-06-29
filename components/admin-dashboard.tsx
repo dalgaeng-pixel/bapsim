@@ -3,6 +3,7 @@
 import {
   AlertTriangle,
   Bell,
+  BellOff,
   Building2,
   CalendarDays,
   Check,
@@ -29,11 +30,15 @@ import {
   LogOut,
   Trash2
 } from "lucide-react";
-import { useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Logo } from "@/components/logo";
 import { logoutAdminAction } from "@/app/actions/auth";
-import { subscribeToPushNotifications } from "@/lib/push-client";
+import {
+  getPushNotificationStatus,
+  togglePushNotifications,
+  type PushNotificationStatus
+} from "@/lib/push-client";
 import { buildDeliveryRows, buildMonthlyRows, downloadCsv } from "@/lib/export";
 import { formatKoreanDate, isPastCutoff } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel, requestTypeLabel } from "@/lib/status";
@@ -55,6 +60,24 @@ const storageModeLabel = {
   local: "로컬 저장",
   supabase: "Supabase 연결",
   "supabase-error": "DB 확인 필요"
+};
+
+type VisiblePushStatus = PushNotificationStatus | "checking";
+
+const pushStatusLabel: Record<VisiblePushStatus, string> = {
+  checking: "확인 중",
+  on: "알림 켜짐",
+  off: "알림 꺼짐",
+  blocked: "알림 차단",
+  unsupported: "알림 미지원"
+};
+
+const pushStatusTitle: Record<VisiblePushStatus, string> = {
+  checking: "알림 상태를 확인하는 중입니다.",
+  on: "실시간 알림이 켜져 있습니다. 누르면 알림을 끕니다.",
+  off: "실시간 알림이 꺼져 있습니다. 누르면 알림을 켭니다.",
+  blocked: "브라우저에서 알림 권한이 차단되어 있습니다.",
+  unsupported: "현재 브라우저에서는 푸시 알림을 지원하지 않습니다."
 };
 
 function StatCard({
@@ -100,6 +123,8 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const [tab, setTab] = useState<TabId>("overview");
   const [adminName, setAdminName] = useState("밥심관리자");
   const [search, setSearch] = useState("");
+  const [pushStatus, setPushStatus] = useState<VisiblePushStatus>("checking");
+  const [pushBusy, setPushBusy] = useState(false);
 
   const { state, activeMealType, totals } = store;
   const cutoffPassed = isPastCutoff(activeMealType?.cutoffTime);
@@ -133,6 +158,44 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
   const reviewOrders = state.orders.filter((order) => order.requiresReview && !order.acknowledged);
   const adminUnreadCount = state.notifications.filter((n) => n.target === "admin" && !n.read).length;
+  const PushIcon = pushStatus === "on" ? Bell : BellOff;
+  const pushButtonTone =
+    pushStatus === "on"
+      ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+      : pushStatus === "blocked"
+        ? "bg-red-50 text-bapsim-red hover:bg-red-100"
+        : "bg-stone-100 text-stone-600 hover:bg-stone-200";
+
+  useEffect(() => {
+    let active = true;
+
+    const refreshPushStatus = () => {
+      getPushNotificationStatus().then((status) => {
+        if (active) {
+          setPushStatus(status);
+        }
+      });
+    };
+
+    refreshPushStatus();
+    document.addEventListener("visibilitychange", refreshPushStatus);
+
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", refreshPushStatus);
+    };
+  }, []);
+
+  const handlePushToggle = async () => {
+    if (pushBusy) {
+      return;
+    }
+
+    setPushBusy(true);
+    const nextStatus = await togglePushNotifications();
+    setPushStatus(nextStatus);
+    setPushBusy(false);
+  };
 
   if (!store.loaded) {
     return <div className="p-8 text-sm font-semibold text-stone-600">불러오는 중</div>;
@@ -157,14 +220,13 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
           </div>
           <div className="flex items-center gap-2">
             <button
-              className="relative focus-ring flex h-8 w-8 items-center justify-center rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200"
-              onClick={() => {
-                store.markNotificationsRead("admin");
-                subscribeToPushNotifications();
-              }}
-              title="실시간 알림 켜기 및 알림 읽음 처리"
+              className={`relative focus-ring inline-flex min-h-8 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-black disabled:cursor-wait disabled:opacity-70 ${pushButtonTone}`}
+              onClick={handlePushToggle}
+              title={pushStatusTitle[pushStatus]}
+              disabled={pushBusy || pushStatus === "checking"}
             >
-              <Bell size={16} />
+              <PushIcon size={16} />
+              <span className="hidden sm:inline">{pushStatusLabel[pushStatus]}</span>
               {adminUnreadCount > 0 ? (
                 <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-bapsim-red px-1 text-[10px] font-black text-white">
                   {adminUnreadCount}

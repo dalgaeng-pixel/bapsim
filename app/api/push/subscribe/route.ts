@@ -43,3 +43,37 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("admin_token");
+
+  if (!token || token.value !== "authenticated") {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 500 });
+  }
+
+  try {
+    const { endpoint } = await req.json();
+
+    if (!endpoint || typeof endpoint !== "string") {
+      return NextResponse.json({ error: "Invalid endpoint" }, { status: 400 });
+    }
+
+    const { error } = await supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
+
+    if (error) {
+      console.error("Supabase delete error:", error);
+      return NextResponse.json({ error: "Failed to remove subscription" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error removing subscription", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
