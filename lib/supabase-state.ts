@@ -153,6 +153,19 @@ async function upsertRows<T extends Record<string, unknown>>(
   }
 }
 
+async function deleteRows(client: SupabaseClient, table: string, ids: string[]) {
+  if (ids.length === 0) {
+    return;
+  }
+
+  const uniqueIds = [...new Set(ids)];
+  const { error } = await client.from(table).delete().in("id", uniqueIds);
+
+  if (error) {
+    throw new Error(`${table}: ${error.message}`);
+  }
+}
+
 export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<AppState> {
   const [
     clientRows,
@@ -446,6 +459,17 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
   );
 }
 
+export type AppStateArrayKey =
+  | "clients"
+  | "mealTypes"
+  | "defaultQuantities"
+  | "orders"
+  | "orderChangeLogs"
+  | "changeRequests"
+  | "holidays"
+  | "notifications"
+  | "auditLogs";
+
 export type AppStateDiff = {
   clients?: Client[];
   mealTypes?: MealType[];
@@ -457,9 +481,22 @@ export type AppStateDiff = {
   notifications?: AppNotification[];
   auditLogs?: AdminAuditLog[];
   deliveryOverrides?: Record<string, string[]>;
+  deleted?: Partial<Record<AppStateArrayKey, string[]>>;
 };
 
 export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: AppStateDiff) {
+  if (diff.deleted) {
+    await deleteRows(client, "order_change_logs", diff.deleted.orderChangeLogs ?? []);
+    await deleteRows(client, "change_requests", diff.deleted.changeRequests ?? []);
+    await deleteRows(client, "notifications", diff.deleted.notifications ?? []);
+    await deleteRows(client, "holidays", diff.deleted.holidays ?? []);
+    await deleteRows(client, "default_meal_quantities", diff.deleted.defaultQuantities ?? []);
+    await deleteRows(client, "daily_meal_orders", diff.deleted.orders ?? []);
+    await deleteRows(client, "admin_audit_logs", diff.deleted.auditLogs ?? []);
+    await deleteRows(client, "clients", diff.deleted.clients ?? []);
+    await deleteRows(client, "meal_types", diff.deleted.mealTypes ?? []);
+  }
+
   if (diff.clients?.length) {
     await upsertRows(
       client,

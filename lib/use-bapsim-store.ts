@@ -48,12 +48,12 @@ function writeState(state: AppState) {
 }
 
 import { syncAppStateDiffAction } from "@/app/actions/state";
-import type { AppStateDiff } from "@/lib/supabase-state";
+import type { AppStateArrayKey, AppStateDiff } from "@/lib/supabase-state";
 
 function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   const diff: AppStateDiff = {};
 
-  const arrayKeys: (keyof AppState)[] = [
+  const arrayKeys: AppStateArrayKey[] = [
     "clients",
     "mealTypes",
     "defaultQuantities",
@@ -66,8 +66,6 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   ];
 
   for (const key of arrayKeys) {
-    if (key === "deliveryOverrides") continue;
-    
     const prevArr = prev[key] as any[];
     const nextArr = next[key] as any[];
     
@@ -78,6 +76,15 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
 
     if (changed.length > 0) {
       (diff as any)[key] = changed;
+    }
+
+    const deleted = prevArr
+      .filter((prevItem) => !nextArr.some((nextItem) => nextItem.id === prevItem.id))
+      .map((prevItem) => prevItem.id);
+
+    if (deleted.length > 0) {
+      diff.deleted ??= {};
+      diff.deleted[key] = deleted;
     }
   }
 
@@ -814,13 +821,23 @@ export function useBapsimStore(initialState?: AppState) {
           return previous;
         }
 
-        // Also remove related data to keep state clean (in actual DB, ON DELETE CASCADE would handle this, but for local state we should filter them out)
+        const deliveryOverrides = Object.fromEntries(
+          Object.entries(previous.deliveryOverrides).map(([key, clientOrder]) => [
+            key,
+            clientOrder.filter((item) => item !== clientId)
+          ])
+        );
+
         return {
           ...previous,
           clients: previous.clients.filter((item) => item.id !== clientId),
           orders: previous.orders.filter((item) => item.clientId !== clientId),
           defaultQuantities: previous.defaultQuantities.filter((item) => item.clientId !== clientId),
+          orderChangeLogs: previous.orderChangeLogs.filter((item) => item.clientId !== clientId),
           changeRequests: previous.changeRequests.filter((item) => item.clientId !== clientId),
+          holidays: previous.holidays.filter((item) => item.clientId !== clientId),
+          notifications: previous.notifications.filter((item) => item.clientId !== clientId),
+          deliveryOverrides,
           auditLogs: [
             {
               id: id("audit"),

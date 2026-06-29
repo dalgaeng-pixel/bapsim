@@ -1,6 +1,6 @@
 # Developer Notes
 
-Last updated: 2026-06-26 10:30 KST
+Last updated: 2026-06-29 KST
 
 ## Purpose
 
@@ -21,6 +21,7 @@ This file is the first stop for the next agent or developer continuing the proje
 
 - **Server-Side Rendering (SSR) & Initial State Injection**: Both the Admin (`/admin`) and Client (`/client/[code]`) pages are now Server Components. They fetch data directly from Supabase via `supabase-admin` and pass it as `initialState` to the Zustand store, completely eliminating initial loading spinners.
 - **Granular State Sync (Diff)**: The old whole-state sync bridge (`/api/state`) was replaced by a Server Action (`syncAppStateDiffAction`). The client now calculates the diff (inserted, updated, deleted items) and sends only the changes to Supabase, vastly improving performance and saving bandwidth.
+- **Persisted Delete Diff**: Client-side deletes now include `deleted` IDs in `AppStateDiff`, and `saveAppStateDiffToSupabase` applies matching Supabase `delete` operations before upserts. This fixes deleted test clients reappearing after refresh because SSR reloaded stale rows from Supabase.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
 - **Mobile Layout Optimization**: Prevented horizontal scrolling issues by removing fixed minimum widths (`min-w-[...]`) from tables, hiding non-essential columns on mobile, and ensuring long addresses wrap correctly with `break-all`.
 
@@ -64,8 +65,8 @@ Expected current result:
 
 - `components/admin-dashboard.tsx`: admin UI, tabs, client management, delivery table, CSV actions.
 - `components/client-app.tsx`: customer PIN login, quantity change, rejection, profile change requests.
-- `lib/use-bapsim-store.ts`: main client-side state store, calculating state diffs and syncing via Server Action.
-- `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows and calculates diffs for insertion/updates.
+- `lib/use-bapsim-store.ts`: main client-side state store, calculating state diffs including deleted IDs and syncing via Server Action.
+- `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows and applies diff upserts/deletes.
 - `app/actions/state.ts`: Server Actions for receiving diffs and securely updating Supabase.
 - `app/client/[code]/page.tsx`: Dynamic route for client app, featuring strict server-side data isolation.
 - `app/admin/page.tsx`: SSR entry point for the Admin Dashboard.
