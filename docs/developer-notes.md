@@ -26,6 +26,8 @@ This file is the first stop for the next agent or developer continuing the proje
 - **Weekly Meal Scheduling**: The app now supports client-specific weekday default quantities by meal type, starting with lunch and dinner. Admins edit the `Mon-Sun x lunch/dinner` grid in each client form. Customers can only change date-specific orders, not the admin default table.
 - **Date & Meal Selection**: The admin dashboard has `today / tomorrow / date input` and meal-type selectors. Customer pages show today/tomorrow cards plus a two-week weekly setting table.
 - **Simple No-Meal Rules**: Monthly last-day, monthly day, and one-off date no-meal rules are stored through the existing `holidays` table using an encoded JSON payload in `name`. This avoids an immediate Supabase table migration while preserving structured parsing in `lib/schedule.ts`.
+- **Delivery Start Date**: Each client has a `deliveryStartDate`. Admins can enter meal defaults before actual service starts, but delivery tables and monthly settlement include orders only on/after that start date. The value is persisted as an encoded internal settings row in `holidays`, avoiding an immediate `clients` table migration.
+- **Editable Monthly Settlement**: The monthly tab now has a month selector and editable settlement final quantity per client. Original daily orders stay unchanged; manual settlement overrides are stored as `monthlyAdjustments` and persisted as encoded internal rows in `holidays`.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
 - **Mobile Layout Optimization**: Prevented horizontal scrolling issues by removing fixed minimum widths (`min-w-[...]`) from tables, hiding non-essential columns on mobile, and ensuring long addresses wrap correctly with `break-all`.
 
@@ -83,13 +85,14 @@ Expected current result:
 
 The app state currently contains:
 
-- `clients`: customer companies, addresses, manager contact, delivery order, invite code/PIN.
+- `clients`: customer companies, addresses, manager contact, delivery order, invite code/PIN, delivery start date.
 - `mealTypes`: meal categories, currently lunch and dinner.
 - `defaultQuantities`: weekday and meal-type default quantities.
 - `orders`: date-specific meal quantities and statuses.
 - `orderChangeLogs`: quantity change history.
 - `changeRequests`: late changes and company/contact update requests.
 - `holidays`: global/client-specific holidays and encoded simple no-meal exception rules.
+- `monthlyAdjustments`: admin-only monthly settlement overrides by client/month.
 - `notifications`: in-app notification records.
 - `auditLogs`: important admin action history.
 - `deliveryOverrides`: per-day temporary delivery ordering.

@@ -48,6 +48,8 @@ import {
   createHolidayRule,
   enabledMealTypes,
   getWeeklyQuantitiesForClient,
+  getMonthlySettlementForClient,
+  isClientStartedOnDate,
   makeRuleStorageDate,
   WEEKDAYS,
   type WeeklyQuantities
@@ -135,6 +137,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const [pushStatus, setPushStatus] = useState<VisiblePushStatus>("checking");
   const [pushBusy, setPushBusy] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayKey());
+  const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
   const [selectedMealTypeId, setSelectedMealTypeId] = useState<string | null>(null);
 
   const { state } = store;
@@ -166,13 +169,26 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   });
 
   const deliveryOrders = visibleOrders.filter(
-    (order) => order.status !== "rejected" && order.status !== "holiday" && order.finalQuantity > 0
+    (order) => {
+      const client = store.getClient(order.clientId);
+      return (
+        isClientStartedOnDate(client, order.date) &&
+        order.status !== "rejected" &&
+        order.status !== "holiday" &&
+        order.finalQuantity > 0
+      );
+    }
   );
   const totals = {
     finalQuantity: visibleOrders
+      .filter((order) => isClientStartedOnDate(store.getClient(order.clientId), order.date))
       .filter((order) => order.status !== "holiday")
       .reduce((sum, order) => sum + order.finalQuantity, 0),
-    rejectedCount: visibleOrders.filter((order) => order.status === "rejected" || order.status === "holiday").length
+    rejectedCount: visibleOrders.filter(
+      (order) =>
+        isClientStartedOnDate(store.getClient(order.clientId), order.date) &&
+        (order.status === "rejected" || order.status === "holiday")
+    ).length
   };
 
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
@@ -595,43 +611,58 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
 
           {tab === "monthly" ? (
             <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
                   <h2 className="text-xl font-black">월별 집계</h2>
-                  <p className="text-sm font-semibold text-stone-500">현재 MVP는 샘플 일자 기준 집계입니다.</p>
+                  <p className="text-sm font-semibold text-stone-500">
+                    납품 시작일 이후 주문만 포함하고, 정산 최종 수량은 별도로 수정할 수 있습니다.
+                  </p>
                 </div>
-                <button
-                  className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
-                  onClick={() => downloadCsv("bapsim-monthly.csv", buildMonthlyRows(state))}
-                >
-                  <Download size={16} />
-                  엑셀
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    className="focus-ring rounded-md border border-stone-300 px-3 py-2 text-sm font-bold"
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(event) => setSelectedMonth(event.target.value)}
+                  />
+                  <button
+                    className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
+                    onClick={() =>
+                      downloadCsv(`bapsim-monthly-${selectedMonth}.csv`, buildMonthlyRows(state, selectedMonth))
+                    }
+                  >
+                    <Download size={16} />
+                    엑셀
+                  </button>
+                </div>
               </div>
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">업체</th>
+                      <th className="hidden md:table-cell">납품 시작</th>
                       <th className="hidden sm:table-cell">기본</th>
-                      <th>최종</th>
+                      <th className="hidden sm:table-cell">자동 최종</th>
+                      <th>정산 최종</th>
                       <th className="hidden sm:table-cell">거절</th>
                       <th className="hidden sm:table-cell">변경</th>
+                      <th className="min-w-48">메모</th>
+                      <th>저장</th>
                     </tr>
                   </thead>
                   <tbody>
                     {state.clients.map((client) => {
-                      const orders = state.orders.filter((order) => order.clientId === client.id);
+                      const settlement = getMonthlySettlementForClient(state, client.id, selectedMonth);
                       return (
-                        <tr key={client.id} className="border-b border-stone-100">
-                          <td className="py-3 font-black">{client.name}</td>
-                          <td className="hidden sm:table-cell">{orders.reduce((sum, order) => sum + order.baseQuantity, 0)}개</td>
-                          <td className="font-black text-bapsim-red">
-                            {orders.reduce((sum, order) => sum + order.finalQuantity, 0)}개
-                          </td>
-                          <td className="hidden sm:table-cell">{orders.filter((order) => order.status === "rejected").length}건</td>
-                          <td className="hidden sm:table-cell">{orders.filter((order) => order.status === "changed").length}건</td>
-                        </tr>
+                        <MonthlySettlementRow
+                          key={`${selectedMonth}:${client.id}`}
+                          adminName={adminName}
+                          client={client}
+                          month={selectedMonth}
+                          settlement={settlement}
+                          store={store}
+                        />
                       );
                     })}
                   </tbody>
@@ -760,9 +791,110 @@ function OrderTable({
   );
 }
 
+function MonthlySettlementRow({
+  adminName,
+  client,
+  month,
+  settlement,
+  store
+}: {
+  adminName: string;
+  client: Client;
+  month: string;
+  settlement: ReturnType<typeof getMonthlySettlementForClient>;
+  store: ReturnType<typeof useBapsimStore>;
+}) {
+  const [quantity, setQuantity] = useState(String(settlement.settlementFinalQuantity));
+  const [memo, setMemo] = useState(settlement.adjustment?.memo ?? "");
+
+  useEffect(() => {
+    setQuantity(String(settlement.settlementFinalQuantity));
+    setMemo(settlement.adjustment?.memo ?? "");
+  }, [client.id, month, settlement.adjustment?.memo, settlement.settlementFinalQuantity]);
+
+  const parsedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const normalizedMemo = memo.trim();
+  const quantityChanged = parsedQuantity !== settlement.settlementFinalQuantity;
+  const memoChanged = normalizedMemo !== (settlement.adjustment?.memo ?? "");
+  const dirty = quantityChanged || memoChanged;
+  const correction = settlement.settlementFinalQuantity - settlement.computedFinalQuantity;
+
+  return (
+    <tr className="border-b border-stone-100 align-top">
+      <td className="py-3">
+        <p className="font-black">{client.name}</p>
+        {correction !== 0 ? (
+          <p className="mt-1 text-xs font-bold text-bapsim-red">
+            {correction > 0 ? `+${correction}` : correction}개 보정
+          </p>
+        ) : null}
+      </td>
+      <td className="hidden md:table-cell py-3">
+        {client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}
+      </td>
+      <td className="hidden sm:table-cell py-3">{settlement.computedBaseQuantity}개</td>
+      <td className="hidden sm:table-cell py-3">{settlement.computedFinalQuantity}개</td>
+      <td className="py-3">
+        <input
+          className="focus-ring w-24 rounded-md border border-stone-300 px-3 py-2 text-right text-sm font-black text-bapsim-red"
+          type="number"
+          min={0}
+          value={quantity}
+          onChange={(event) => setQuantity(event.target.value)}
+        />
+      </td>
+      <td className="hidden sm:table-cell py-3">{settlement.rejectedCount}건</td>
+      <td className="hidden sm:table-cell py-3">{settlement.changedCount}건</td>
+      <td className="py-3">
+        <input
+          className="focus-ring w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+          value={memo}
+          placeholder="정산 보정 사유"
+          onChange={(event) => setMemo(event.target.value)}
+        />
+      </td>
+      <td className="py-3">
+        <div className="flex gap-1">
+          <button
+            className="focus-ring rounded-md bg-bapsim-red p-2 text-white disabled:bg-stone-300"
+            title="정산 수정 저장"
+            disabled={!dirty || quantity.trim() === ""}
+            onClick={() =>
+              store.updateMonthlyAdjustment(client.id, month, parsedQuantity, normalizedMemo, adminName)
+            }
+          >
+            <Save size={16} />
+          </button>
+          <button
+            className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700"
+            title="자동 최종 수량으로 복원"
+            onClick={() =>
+              store.updateMonthlyAdjustment(
+                client.id,
+                month,
+                settlement.computedFinalQuantity,
+                "",
+                adminName
+              )
+            }
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 type ClientFormState = Pick<
   Client,
-  "name" | "address" | "addressDetail" | "managerName" | "managerPhone" | "deliveryMemo"
+  | "name"
+  | "address"
+  | "addressDetail"
+  | "managerName"
+  | "managerPhone"
+  | "deliveryMemo"
+  | "deliveryStartDate"
 > & {
   weeklyQuantities: WeeklyQuantities;
   exceptionRules: Holiday[];
@@ -775,6 +907,7 @@ const emptyClientForm: ClientFormState = {
   managerName: "",
   managerPhone: "",
   deliveryMemo: "",
+  deliveryStartDate: todayKey(),
   weeklyQuantities: {},
   exceptionRules: []
 };
@@ -821,6 +954,7 @@ function ClientManager({
     setEditingClientId(null);
     setForm({
       ...emptyClientForm,
+      deliveryStartDate: todayKey(),
       weeklyQuantities: createBlankWeeklyQuantities(),
       exceptionRules: []
     });
@@ -837,6 +971,7 @@ function ClientManager({
       managerName: client.managerName,
       managerPhone: client.managerPhone,
       deliveryMemo: client.deliveryMemo,
+      deliveryStartDate: client.deliveryStartDate ?? todayKey(),
       weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
       exceptionRules: store.state.holidays.filter(
         (holiday) => holiday.clientId === client.id && holiday.ruleType
@@ -899,6 +1034,12 @@ function ClientManager({
               label="담당자 연락처"
               value={form.managerPhone}
               onChange={(value) => setForm((current) => ({ ...current, managerPhone: value }))}
+            />
+            <Field
+              label="납품 시작일"
+              type="date"
+              value={form.deliveryStartDate ?? todayKey()}
+              onChange={(value) => setForm((current) => ({ ...current, deliveryStartDate: value }))}
             />
             <Field
               label="주소"
@@ -995,6 +1136,10 @@ function ClientManager({
             <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
               <Info label="초대 코드" value={client.inviteCode} />
               <Info label="PIN" value={client.invitePin} />
+              <Info
+                label="납품 시작일"
+                value={client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}
+              />
               <Info label="배달 메모" value={client.deliveryMemo || "-"} />
               <Info label="최근 접속" value={client.lastSeenAt?.slice(0, 10) ?? "-"} />
             </div>
@@ -1323,7 +1468,7 @@ function Field({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: "text" | "number";
+  type?: "text" | "number" | "date";
   disabled?: boolean;
 }) {
   return (

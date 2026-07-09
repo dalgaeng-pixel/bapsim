@@ -1,4 +1,6 @@
 import type { AppState, DailyMealOrder } from "@/lib/types";
+import { todayKey } from "@/lib/date";
+import { getMonthlySettlementForClient } from "@/lib/schedule";
 
 function csvEscape(value: string | number | undefined) {
   const text = String(value ?? "");
@@ -36,17 +38,21 @@ export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
   ];
 }
 
-export function buildMonthlyRows(state: AppState) {
+export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)) {
   return [
-    ["업체명", "기본 수량 합계", "최종 수량 합계", "거절 건수", "변경 건수"],
+    ["월", "업체명", "납품 시작일", "기본 수량 합계", "자동 최종", "정산 최종", "거절 건수", "변경 건수", "정산 메모"],
     ...state.clients.map((client) => {
-      const orders = state.orders.filter((order) => order.clientId === client.id);
+      const settlement = getMonthlySettlementForClient(state, client.id, month);
       return [
+        month,
         client.name,
-        orders.reduce((sum, order) => sum + order.baseQuantity, 0),
-        orders.reduce((sum, order) => sum + order.finalQuantity, 0),
-        orders.filter((order) => order.status === "rejected").length,
-        orders.filter((order) => order.status === "changed").length
+        client.deliveryStartDate ?? "즉시",
+        settlement.computedBaseQuantity,
+        settlement.computedFinalQuantity,
+        settlement.settlementFinalQuantity,
+        settlement.rejectedCount,
+        settlement.changedCount,
+        settlement.adjustment?.memo
       ];
     })
   ];

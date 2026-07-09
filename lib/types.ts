@@ -19,6 +19,7 @@ export type AuditAction =
   | "acknowledge_change"
   | "reset_pin"
   | "change_delivery_order"
+  | "update_monthly_adjustment"
   | "delete_client";
 
 export interface Client {
@@ -33,6 +34,7 @@ export interface Client {
   status: ClientStatus;
   inviteCode: string;
   invitePin: string;
+  deliveryStartDate?: string;
   lastSeenAt?: string;
 }
 
@@ -114,6 +116,15 @@ export interface Holiday {
   enabled?: boolean;
 }
 
+export interface MonthlyAdjustment {
+  id: string;
+  month: string;
+  clientId: string;
+  finalQuantity: number;
+  memo?: string;
+  updatedAt: string;
+}
+
 export interface AppNotification {
   id: string;
   target: NotificationTarget;
@@ -141,6 +152,7 @@ export interface AppState {
   orderChangeLogs: OrderChangeLog[];
   changeRequests: ChangeRequest[];
   holidays: Holiday[];
+  monthlyAdjustments: MonthlyAdjustment[];
   notifications: AppNotification[];
   auditLogs: AdminAuditLog[];
   deliveryOverrides: Record<string, string[]>;

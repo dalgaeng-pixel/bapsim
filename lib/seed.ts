@@ -54,6 +54,7 @@ export function createInitialState(): AppState {
       status: "active",
       inviteCode: "DAEHAN-01",
       invitePin: "1234",
+      deliveryStartDate: date,
       lastSeenAt: nowIso()
     },
     {
@@ -68,6 +69,7 @@ export function createInitialState(): AppState {
       status: "active",
       inviteCode: "SEOHAE-02",
       invitePin: "4821",
+      deliveryStartDate: date,
       lastSeenAt: nowIso()
     },
     {
@@ -82,6 +84,7 @@ export function createInitialState(): AppState {
       status: "active",
       inviteCode: "HANBIT-03",
       invitePin: "9130",
+      deliveryStartDate: date,
       lastSeenAt: nowIso()
     },
     {
@@ -96,6 +99,7 @@ export function createInitialState(): AppState {
       status: "active",
       inviteCode: "SINSUNG-04",
       invitePin: "7782",
+      deliveryStartDate: date,
       lastSeenAt: nowIso()
     },
     {
@@ -110,6 +114,7 @@ export function createInitialState(): AppState {
       status: "active",
       inviteCode: "JATECH-05",
       invitePin: "6650",
+      deliveryStartDate: date,
       lastSeenAt: nowIso()
     }
   ];
@@ -212,6 +217,7 @@ export function createInitialState(): AppState {
       }
     ],
     holidays: [],
+    monthlyAdjustments: [],
     notifications: [
       {
         id: ids.notifications[0],

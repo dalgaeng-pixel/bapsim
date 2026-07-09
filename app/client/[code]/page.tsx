@@ -40,6 +40,7 @@ export default async function ClientPage({ params }: { params: Promise<{ code: s
     orderChangeLogs: rawState.orderChangeLogs.filter(l => l.clientId === client.id),
     changeRequests: rawState.changeRequests.filter(r => r.clientId === client.id),
     holidays: rawState.holidays.filter(h => h.clientId === client.id || !h.clientId), // Global holidays don't have clientId
+    monthlyAdjustments: [], // Settlement adjustments are admin-only
     notifications: rawState.notifications.filter(n => n.clientId === client.id && n.target === "client"),
     auditLogs: [], // Clients don't need admin audit logs
     deliveryOverrides: {} // Clients don't need to know delivery routes of others

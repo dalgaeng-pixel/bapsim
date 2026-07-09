@@ -5,7 +5,8 @@ import type {
   DailyMealOrder,
   DefaultMealQuantity,
   Holiday,
-  MealType
+  MealType,
+  MonthlyAdjustment
 } from "@/lib/types";
 
 export const WEEKDAYS = [
@@ -34,8 +35,15 @@ export const BASE_MEAL_TYPES: MealType[] = [
 ];
 
 const RULE_PREFIX = "__BAPSIM_MEAL_RULE__:";
+const CLIENT_SETTINGS_PREFIX = "__BAPSIM_CLIENT_SETTINGS__:";
+const CLIENT_SETTINGS_DATE = "1900-01-01";
+const MONTHLY_ADJUSTMENT_PREFIX = "__BAPSIM_MONTHLY_ADJUSTMENT__:";
 
 export type WeeklyQuantities = Record<string, Record<number, number>>;
+
+export function isClientStartedOnDate(client: Pick<Client, "deliveryStartDate"> | undefined, date: string) {
+  return !client?.deliveryStartDate || date >= client.deliveryStartDate;
+}
 
 export function addDays(dateKey: string, days: number) {
   const date = parseDateKey(dateKey);
@@ -97,6 +105,7 @@ export function normalizeAppState(state: AppState): AppState {
     orderChangeLogs: state.orderChangeLogs ?? [],
     changeRequests: state.changeRequests ?? [],
     holidays: (state.holidays ?? []).map(normalizeHoliday),
+    monthlyAdjustments: state.monthlyAdjustments ?? [],
     notifications: state.notifications ?? [],
     auditLogs: state.auditLogs ?? [],
     deliveryOverrides: state.deliveryOverrides ?? {}
@@ -277,6 +286,39 @@ export function getOrdersForDate(state: AppState, date: string, mealTypeId?: str
     });
 }
 
+export function getBillableOrdersForClient(state: AppState, clientId: string) {
+  const client = state.clients.find((item) => item.id === clientId);
+  return state.orders.filter(
+    (order) => order.clientId === clientId && isClientStartedOnDate(client, order.date)
+  );
+}
+
+export function getBillableOrdersForClientMonth(state: AppState, clientId: string, month: string) {
+  return getBillableOrdersForClient(state, clientId).filter((order) => order.date.startsWith(month));
+}
+
+export function getMonthlyAdjustment(state: AppState, clientId: string, month: string) {
+  return state.monthlyAdjustments.find(
+    (adjustment) => adjustment.clientId === clientId && adjustment.month === month
+  );
+}
+
+export function getMonthlySettlementForClient(state: AppState, clientId: string, month: string) {
+  const orders = getBillableOrdersForClientMonth(state, clientId, month);
+  const adjustment = getMonthlyAdjustment(state, clientId, month);
+  const computedFinalQuantity = orders.reduce((sum, order) => sum + order.finalQuantity, 0);
+
+  return {
+    orders,
+    adjustment,
+    computedBaseQuantity: orders.reduce((sum, order) => sum + order.baseQuantity, 0),
+    computedFinalQuantity,
+    settlementFinalQuantity: adjustment?.finalQuantity ?? computedFinalQuantity,
+    rejectedCount: orders.filter((order) => order.status === "rejected").length,
+    changedCount: orders.filter((order) => order.status === "changed").length
+  };
+}
+
 export function buildBaseOrder(
   state: AppState,
   clientId: string,
@@ -366,6 +408,105 @@ export function encodeHolidayName(holiday: Holiday) {
     monthDay: holiday.monthDay,
     enabled: holiday.enabled !== false
   })}`;
+}
+
+export function clientSettingsHolidayId(clientId: string) {
+  return `99999999${clientId.slice(8)}`;
+}
+
+export function encodeClientSettingsName(client: Pick<Client, "deliveryStartDate">) {
+  return `${CLIENT_SETTINGS_PREFIX}${JSON.stringify({
+    deliveryStartDate: client.deliveryStartDate
+  })}`;
+}
+
+export function isClientSettingsName(name: string) {
+  return name.startsWith(CLIENT_SETTINGS_PREFIX);
+}
+
+export function decodeClientSettingsName(name: string) {
+  if (!isClientSettingsName(name)) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(name.slice(CLIENT_SETTINGS_PREFIX.length)) as {
+      deliveryStartDate?: string;
+    };
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+export function buildClientSettingsHolidayRow(client: Pick<Client, "id" | "deliveryStartDate">) {
+  return {
+    id: clientSettingsHolidayId(client.id),
+    holiday_date: CLIENT_SETTINGS_DATE,
+    name: encodeClientSettingsName(client),
+    client_id: client.id
+  };
+}
+
+export function isClientSettingsHolidayRow(row: { name: string }) {
+  return isClientSettingsName(row.name);
+}
+
+export function encodeMonthlyAdjustmentName(adjustment: MonthlyAdjustment) {
+  return `${MONTHLY_ADJUSTMENT_PREFIX}${JSON.stringify({
+    month: adjustment.month,
+    clientId: adjustment.clientId,
+    finalQuantity: adjustment.finalQuantity,
+    memo: adjustment.memo,
+    updatedAt: adjustment.updatedAt
+  })}`;
+}
+
+export function isMonthlyAdjustmentName(name: string) {
+  return name.startsWith(MONTHLY_ADJUSTMENT_PREFIX);
+}
+
+export function decodeMonthlyAdjustmentName(name: string) {
+  if (!isMonthlyAdjustmentName(name)) {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(name.slice(MONTHLY_ADJUSTMENT_PREFIX.length)) as {
+      month?: string;
+      clientId?: string;
+      finalQuantity?: number;
+      memo?: string;
+      updatedAt?: string;
+    };
+
+    if (!parsed.month || !parsed.clientId || typeof parsed.finalQuantity !== "number") {
+      return undefined;
+    }
+
+    return {
+      month: parsed.month,
+      clientId: parsed.clientId,
+      finalQuantity: parsed.finalQuantity,
+      memo: parsed.memo,
+      updatedAt: parsed.updatedAt ?? new Date().toISOString()
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function buildMonthlyAdjustmentHolidayRow(adjustment: MonthlyAdjustment) {
+  return {
+    id: adjustment.id,
+    holiday_date: `${adjustment.month}-01`,
+    name: encodeMonthlyAdjustmentName(adjustment),
+    client_id: null
+  };
+}
+
+export function isMonthlyAdjustmentHolidayRow(row: { name: string }) {
+  return isMonthlyAdjustmentName(row.name);
 }
 
 export function decodeHoliday(row: { id: string; holiday_date: string; name: string; client_id: string | null }): Holiday {

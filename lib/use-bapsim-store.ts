@@ -9,6 +9,7 @@ import {
   createLocalId,
   enabledMealTypes,
   getBaseQuantity,
+  getMonthlySettlementForClient,
   getOrderForSlot,
   getOrdersForDate,
   normalizeAppState,
@@ -67,6 +68,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
     "orderChangeLogs",
     "changeRequests",
     "holidays",
+    "monthlyAdjustments",
     "notifications",
     "auditLogs"
   ];
@@ -745,6 +747,66 @@ export function useBapsimStore(initialState?: AppState) {
     [commit]
   );
 
+  const updateMonthlyAdjustment = useCallback(
+    (clientId: string, month: string, finalQuantity: number, memo: string, adminName: string) => {
+      commit((previous) => {
+        const client = previous.clients.find((item) => item.id === clientId);
+        if (!client) {
+          return previous;
+        }
+
+        const settlement = getMonthlySettlementForClient(previous, clientId, month);
+        const existing = settlement.adjustment;
+        const normalizedFinalQuantity = Math.max(0, Math.floor(Number(finalQuantity) || 0));
+        const normalizedMemo = memo.trim();
+        const shouldRemove =
+          normalizedFinalQuantity === settlement.computedFinalQuantity && normalizedMemo.length === 0;
+
+        const monthlyAdjustments = shouldRemove
+          ? previous.monthlyAdjustments.filter((item) => item.id !== existing?.id)
+          : existing
+            ? previous.monthlyAdjustments.map((item) =>
+                item.id === existing.id
+                  ? {
+                      ...item,
+                      finalQuantity: normalizedFinalQuantity,
+                      memo: normalizedMemo || undefined,
+                      updatedAt: new Date().toISOString()
+                    }
+                  : item
+              )
+            : [
+                ...previous.monthlyAdjustments,
+                {
+                  id: id("monthly-adjustment"),
+                  month,
+                  clientId,
+                  finalQuantity: normalizedFinalQuantity,
+                  memo: normalizedMemo || undefined,
+                  updatedAt: new Date().toISOString()
+                }
+              ];
+
+        return {
+          ...previous,
+          monthlyAdjustments,
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_monthly_adjustment",
+              adminName,
+              targetLabel: client.name,
+              detail: `${month} 월별 집계 정산 수량 수정`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
   const resetDemoData = useCallback(() => {
     const next = createInitialState();
     setState(next);
@@ -769,7 +831,13 @@ export function useBapsimStore(initialState?: AppState) {
     (
       input: Pick<
         Client,
-        "name" | "address" | "addressDetail" | "managerName" | "managerPhone" | "deliveryMemo"
+        | "name"
+        | "address"
+        | "addressDetail"
+        | "managerName"
+        | "managerPhone"
+        | "deliveryMemo"
+        | "deliveryStartDate"
       > & { weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
       adminName: string
     ) => {
@@ -796,6 +864,7 @@ export function useBapsimStore(initialState?: AppState) {
           status: "active",
           inviteCode,
           invitePin: createPin(),
+          deliveryStartDate: input.deliveryStartDate || date,
           lastSeenAt: undefined
         };
 
@@ -851,7 +920,13 @@ export function useBapsimStore(initialState?: AppState) {
       updates: Partial<
         Pick<
           Client,
-          "name" | "address" | "addressDetail" | "managerName" | "managerPhone" | "deliveryMemo"
+          | "name"
+          | "address"
+          | "addressDetail"
+          | "managerName"
+          | "managerPhone"
+          | "deliveryMemo"
+          | "deliveryStartDate"
         >
       > & { weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },
       adminName: string
@@ -1028,6 +1103,7 @@ export function useBapsimStore(initialState?: AppState) {
           orderChangeLogs: previous.orderChangeLogs.filter((item) => item.clientId !== clientId),
           changeRequests: previous.changeRequests.filter((item) => item.clientId !== clientId),
           holidays: previous.holidays.filter((item) => item.clientId !== clientId),
+          monthlyAdjustments: previous.monthlyAdjustments.filter((item) => item.clientId !== clientId),
           notifications: previous.notifications.filter((item) => item.clientId !== clientId),
           deliveryOverrides,
           auditLogs: [
@@ -1068,6 +1144,7 @@ export function useBapsimStore(initialState?: AppState) {
     resolveRequest,
     submitInfoRequest,
     moveDeliveryOrder,
+    updateMonthlyAdjustment,
     resetDemoData,
     markNotificationsRead,
     createClientRecord,

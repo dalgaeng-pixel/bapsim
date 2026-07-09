@@ -497,6 +497,10 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                 <Info label="업체명" value={client.name} />
                 <Info label="주소" value={`${client.address} ${client.addressDetail}`} />
                 <Info label="담당자" value={`${client.managerName} · ${client.managerPhone}`} />
+                <Info
+                  label="납품 시작일"
+                  value={client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}
+                />
               </div>
             </div>
             <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">

@@ -9,9 +9,21 @@ import type {
   DefaultMealQuantity,
   Holiday,
   MealType,
+  MonthlyAdjustment,
   OrderChangeLog
 } from "@/lib/types";
-import { decodeHoliday, encodeHolidayName, normalizeAppState } from "@/lib/schedule";
+import {
+  buildClientSettingsHolidayRow,
+  buildMonthlyAdjustmentHolidayRow,
+  clientSettingsHolidayId,
+  decodeClientSettingsName,
+  decodeHoliday,
+  decodeMonthlyAdjustmentName,
+  encodeHolidayName,
+  isClientSettingsHolidayRow,
+  isMonthlyAdjustmentHolidayRow,
+  normalizeAppState
+} from "@/lib/schedule";
 
 type ClientRow = {
   id: string;
@@ -195,6 +207,15 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
   const deliveryOverrides = Object.fromEntries(
     deliveryOverrideRows.map((row) => [`${row.order_date}:${row.meal_type_id}`, row.client_order])
   );
+  const clientSettings = Object.fromEntries(
+    holidayRows
+      .filter((row) => row.client_id && isClientSettingsHolidayRow(row))
+      .map((row) => [row.client_id!, decodeClientSettingsName(row.name)])
+  );
+  const monthlyAdjustments = holidayRows.flatMap((row): MonthlyAdjustment[] => {
+    const adjustment = decodeMonthlyAdjustmentName(row.name);
+    return adjustment ? [{ id: row.id, ...adjustment }] : [];
+  });
 
   return normalizeAppState({
     clients: clientRows.map((row): Client => ({
@@ -209,6 +230,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       status: row.status,
       inviteCode: row.invite_code,
       invitePin: row.invite_pin,
+      deliveryStartDate: clientSettings[row.id]?.deliveryStartDate,
       lastSeenAt: row.last_seen_at ?? undefined
     })),
     mealTypes: mealTypeRows.map((row): MealType => ({
@@ -273,7 +295,10 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       resolvedAt: row.resolved_at ?? undefined,
       resolvedBy: row.resolved_by ?? undefined
     })),
-    holidays: holidayRows.map((row): Holiday => decodeHoliday(row)),
+    holidays: holidayRows
+      .filter((row) => !isClientSettingsHolidayRow(row) && !isMonthlyAdjustmentHolidayRow(row))
+      .map((row): Holiday => decodeHoliday(row)),
+    monthlyAdjustments,
     notifications: notificationRows.map((row): AppNotification => ({
       id: row.id,
       target: row.target,
@@ -313,6 +338,11 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
       invite_pin: item.invitePin,
       last_seen_at: item.lastSeenAt ?? null
     }))
+  );
+  await upsertRows(
+    client,
+    "holidays",
+    state.clients.map((item) => buildClientSettingsHolidayRow(item))
   );
 
   await upsertRows(
@@ -412,6 +442,11 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
       client_id: item.clientId ?? null
     }))
   );
+  await upsertRows(
+    client,
+    "holidays",
+    state.monthlyAdjustments.map((item) => buildMonthlyAdjustmentHolidayRow(item))
+  );
 
   await upsertRows(
     client,
@@ -463,6 +498,7 @@ export type AppStateArrayKey =
   | "orderChangeLogs"
   | "changeRequests"
   | "holidays"
+  | "monthlyAdjustments"
   | "notifications"
   | "auditLogs";
 
@@ -474,6 +510,7 @@ export type AppStateDiff = {
   orderChangeLogs?: OrderChangeLog[];
   changeRequests?: ChangeRequest[];
   holidays?: Holiday[];
+  monthlyAdjustments?: MonthlyAdjustment[];
   notifications?: AppNotification[];
   auditLogs?: AdminAuditLog[];
   deliveryOverrides?: Record<string, string[]>;
@@ -486,6 +523,8 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     await deleteRows(client, "change_requests", diff.deleted.changeRequests ?? []);
     await deleteRows(client, "notifications", diff.deleted.notifications ?? []);
     await deleteRows(client, "holidays", diff.deleted.holidays ?? []);
+    await deleteRows(client, "holidays", diff.deleted.monthlyAdjustments ?? []);
+    await deleteRows(client, "holidays", (diff.deleted.clients ?? []).map(clientSettingsHolidayId));
     await deleteRows(client, "default_meal_quantities", diff.deleted.defaultQuantities ?? []);
     await deleteRows(client, "daily_meal_orders", diff.deleted.orders ?? []);
     await deleteRows(client, "admin_audit_logs", diff.deleted.auditLogs ?? []);
@@ -511,6 +550,11 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
         invite_pin: item.invitePin,
         last_seen_at: item.lastSeenAt ?? null
       }))
+    );
+    await upsertRows(
+      client,
+      "holidays",
+      diff.clients.map((item) => buildClientSettingsHolidayRow(item))
     );
   }
 
@@ -621,6 +665,14 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
         name: encodeHolidayName(item),
         client_id: item.clientId ?? null
       }))
+    );
+  }
+
+  if (diff.monthlyAdjustments?.length) {
+    await upsertRows(
+      client,
+      "holidays",
+      diff.monthlyAdjustments.map((item) => buildMonthlyAdjustmentHolidayRow(item))
     );
   }
 
