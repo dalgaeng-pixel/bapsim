@@ -8,9 +8,11 @@ export type RequestType =
   | "contact_update"
   | "default_quantity_update";
 export type NotificationTarget = "admin" | "client";
+export type HolidayRuleType = "specific_date" | "monthly_day" | "monthly_last_day";
 export type AuditAction =
   | "create_client"
   | "update_client"
+  | "update_meal_settings"
   | "toggle_client_status"
   | "approve_request"
   | "reject_request"
@@ -106,6 +108,10 @@ export interface Holiday {
   date: string;
   name: string;
   clientId?: string;
+  ruleType?: HolidayRuleType;
+  mealTypeIds?: string[];
+  monthDay?: number;
+  enabled?: boolean;
 }
 
 export interface AppNotification {

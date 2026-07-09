@@ -24,6 +24,20 @@ export function isPastCutoff(cutoffTime = "10:00", now = new Date()) {
   return currentMinutes >= cutoffMinutes;
 }
 
+export function isPastCutoffForDate(dateKey: string, cutoffTime = "10:00", now = new Date()) {
+  const today = todayKey(now);
+
+  if (dateKey < today) {
+    return true;
+  }
+
+  if (dateKey > today) {
+    return false;
+  }
+
+  return isPastCutoff(cutoffTime, now);
+}
+
 export function weekdayIndex(date = new Date()) {
   return date.getDay();
 }

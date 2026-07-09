@@ -3,30 +3,42 @@
 import {
   Bell,
   Building2,
+  CalendarDays,
   Check,
   Clock,
   Home,
   Minus,
   Plus,
-  Send,
-  UserRound
+  Save,
+  Send
 } from "lucide-react";
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Logo } from "@/components/logo";
-import { formatKoreanDate, isPastCutoff } from "@/lib/date";
+import { formatKoreanDate, isPastCutoffForDate, todayKey } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel } from "@/lib/status";
 import { useBapsimStore } from "@/lib/use-bapsim-store";
 import { usePWAInstall } from "@/lib/use-pwa-install";
-import type { AppState } from "@/lib/types";
+import {
+  enabledMealTypes,
+  getClientPlanningDates,
+  getTomorrowKey,
+  WEEKDAYS
+} from "@/lib/schedule";
+import type { AppState, DailyMealOrder } from "@/lib/types";
 
-type ClientTab = "today" | "history" | "profile" | "alerts";
+type ClientTab = "today" | "week" | "history" | "profile" | "alerts";
 
 const clientTabs = [
-  { id: "today", label: "오늘 식수", icon: Home },
+  { id: "today", label: "오늘/내일", icon: Home },
+  { id: "week", label: "주간 설정", icon: CalendarDays },
   { id: "history", label: "변경 내역", icon: Clock },
   { id: "profile", label: "내 업체", icon: Building2 },
   { id: "alerts", label: "알림", icon: Bell }
 ] as const;
+
+function slotKey(order: DailyMealOrder) {
+  return `${order.date}:${order.mealTypeId}`;
+}
 
 export function ClientApp({ initialState }: { initialState?: AppState }) {
   const store = useBapsimStore(initialState);
@@ -34,8 +46,8 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   const [loggedIn, setLoggedIn] = useState(false);
   const [pinError, setPinError] = useState("");
   const [tab, setTab] = useState<ClientTab>("today");
-  const [quantityDraft, setQuantityDraft] = useState(0);
-  const [memo, setMemo] = useState("");
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, number>>({});
+  const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [infoMode, setInfoMode] = useState<"address" | "contact">("address");
   const [address, setAddress] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
@@ -44,9 +56,23 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   const { deferredPrompt, promptInstall, isIOS, isInstalled } = usePWAInstall();
 
   const client = store.state.clients[0];
-  const order = store.state.orders.find((item) => item.clientId === client?.id);
-  const mealType = order ? store.getMealType(order.mealTypeId) : store.activeMealType;
-  const cutoffPassed = isPastCutoff(mealType?.cutoffTime);
+  const today = todayKey();
+  const tomorrow = getTomorrowKey(today);
+  const planningDates = useMemo(() => getClientPlanningDates(today), [today]);
+  const mealTypes = enabledMealTypes(store.state);
+
+  const todayOrders = useMemo(
+    () => (client ? store.getClientOrdersForDate(client.id, today) : []),
+    [client, store, today]
+  );
+  const tomorrowOrders = useMemo(
+    () => (client ? store.getClientOrdersForDate(client.id, tomorrow) : []),
+    [client, store, tomorrow]
+  );
+  const planningOrders = useMemo(
+    () => (client ? planningDates.flatMap((date) => store.getClientOrdersForDate(client.id, date)) : []),
+    [client, planningDates, store]
+  );
 
   useEffect(() => {
     if (client) {
@@ -55,13 +81,12 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
         if (savedPin === client.invitePin) {
           setLoggedIn(true);
         }
-      } catch (e) {
+      } catch {
         // Ignore localStorage errors
       }
     }
   }, [client]);
 
-  // 카카오톡 인앱 브라우저 자동 탈출 로직
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
     if (userAgent.includes("kakaotalk")) {
@@ -71,10 +96,23 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   }, []);
 
   useEffect(() => {
-    if (loggedIn && order) {
-      setQuantityDraft(order.finalQuantity);
+    if (!loggedIn) {
+      return;
     }
-  }, [loggedIn, order?.finalQuantity]);
+
+    setQuantityDrafts((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const order of planningOrders) {
+        const key = slotKey(order);
+        if (next[key] === undefined) {
+          next[key] = order.finalQuantity;
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [loggedIn, planningOrders]);
 
   const logs = useMemo(
     () => store.state.orderChangeLogs.filter((log) => log.clientId === client?.id),
@@ -87,15 +125,80 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   );
 
   const notifications = useMemo(
-    () => store.state.notifications.filter((notification) => notification.target === "client" && notification.clientId === client?.id),
+    () =>
+      store.state.notifications.filter(
+        (notification) => notification.target === "client" && notification.clientId === client?.id
+      ),
     [client?.id, store.state.notifications]
   );
+
+  const setDraft = (order: DailyMealOrder, value: number) => {
+    setQuantityDrafts((current) => ({
+      ...current,
+      [slotKey(order)]: Math.max(0, value)
+    }));
+  };
+
+  const setMemo = (order: DailyMealOrder, value: string) => {
+    setMemoDrafts((current) => ({
+      ...current,
+      [slotKey(order)]: value
+    }));
+  };
+
+  const saveOrder = (order: DailyMealOrder, zeroStatus: "holiday" | "rejected" = "holiday") => {
+    if (!client) {
+      return;
+    }
+
+    const key = slotKey(order);
+    const quantity = quantityDrafts[key] ?? order.finalQuantity;
+    store.changeQuantityForSlot(
+      client.id,
+      order.date,
+      order.mealTypeId,
+      quantity,
+      memoDrafts[key] || "식수 변경",
+      client.managerName,
+      zeroStatus
+    );
+    setMemo(order, "");
+  };
+
+  const saveWeeklyChanges = () => {
+    if (!client) {
+      return;
+    }
+
+    const changed = planningOrders.filter((order) => {
+      const draft = quantityDrafts[slotKey(order)];
+      return draft !== undefined && draft !== order.finalQuantity;
+    });
+
+    for (const order of changed) {
+      store.changeQuantityForSlot(
+        client.id,
+        order.date,
+        order.mealTypeId,
+        quantityDrafts[slotKey(order)] ?? order.finalQuantity,
+        "주간 설정",
+        client.managerName,
+        "holiday"
+      );
+    }
+
+    alert(
+      changed.length > 0
+        ? `${changed.length}건의 식수 변경을 저장했습니다. 마감 후 항목은 승인 요청으로 들어갑니다.`
+        : "변경된 식수가 없습니다."
+    );
+  };
 
   if (!store.loaded) {
     return <div className="p-8 text-sm font-semibold text-stone-600">불러오는 중...</div>;
   }
 
-  if (!client || !order) {
+  if (!client) {
     return (
       <div className="flex min-h-screen items-center justify-center p-8 text-center">
         <div>
@@ -107,6 +210,7 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
       </div>
     );
   }
+
   if (!loggedIn) {
     return (
       <main className="min-h-screen px-4 py-6">
@@ -139,10 +243,9 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                   setLoggedIn(true);
                   try {
                     localStorage.setItem(`bapsim_client_auth_${client.id}`, client.invitePin);
-                  } catch (e) {
+                  } catch {
                     // Ignore localStorage errors
                   }
-                  setQuantityDraft(order.finalQuantity);
                   return;
                 }
                 setPinError("PIN이 맞지 않습니다.");
@@ -179,141 +282,65 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
       <section className="mx-auto max-w-3xl px-4 py-5">
         {tab === "today" ? (
           <div className="space-y-4">
-            <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
-              <p className="text-sm font-bold text-bapsim-red">{formatKoreanDate(order.date)}</p>
-              <div className="mt-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
-                <div>
-                  <h2 className="text-2xl font-black">{client.name}</h2>
-                  <p className="mt-1 text-sm font-semibold text-stone-600">{client.address}</p>
-                </div>
-                <span className="rounded-full bg-stone-100 px-3 py-1 text-sm font-black">
-                  {cutoffPassed ? "마감됨" : "변경 가능"}
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-bold text-stone-500">{mealType?.name ?? "식사"}</p>
-                  <p className="mt-2 text-5xl font-black text-bapsim-red">{order.finalQuantity}개</p>
-                  <p className="mt-2 text-sm font-semibold text-stone-600">
-                    기본 {order.baseQuantity}개 · 마감 {mealType?.cutoffTime ?? "10:00"}
-                  </p>
-                </div>
-                <span
-                  className={`inline-flex min-w-20 justify-center rounded-full border px-3 py-1 text-sm font-black ${orderStatusClass(order.status)}`}
-                >
-                  {orderStatusLabel(order.status)}
-                </span>
-              </div>
-
-              <div className="mt-6 rounded-lg bg-stone-50 p-4">
-                <p className="text-sm font-black text-stone-700">
-                  {cutoffPassed ? "변경 요청 수량" : "변경 후 수량"}
-                </p>
-                <div className="mt-3 rounded-md bg-stone-100 p-3 text-sm text-stone-600">
-                  <p className="font-bold text-stone-700">💡 매번 식사 요청을 하지 않으셔도 됩니다.</p>
-                  <p className="mt-1 leading-relaxed">
-                    처음에 설정된 인원수만큼 기본적으로 매일 제공하며, 특별히 변동사항이 있을 시만 수량을 변경해 주시면 즉시 반영됩니다.
-                  </p>
-                </div>
-                <div className="mt-5 grid grid-cols-[44px_1fr_44px] items-center gap-3">
-                  <button
-                    className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
-                    onClick={() => setQuantityDraft(Math.max(0, quantityDraft - 1))}
-                  >
-                    <Minus size={18} />
-                  </button>
-                  <input
-                    className="focus-ring h-11 w-full min-w-0 rounded-md border border-stone-300 text-center text-xl font-black"
-                    inputMode="numeric"
-                    value={quantityDraft}
-                    onChange={(event) => setQuantityDraft(Number(event.target.value.replace(/\D/g, "")) || 0)}
-                  />
-                  <button
-                    className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
-                    onClick={() => setQuantityDraft(quantityDraft + 1)}
-                  >
-                    <Plus size={18} />
-                  </button>
-                </div>
-                <div className="mt-3 grid grid-cols-4 gap-2">
-                  {[-5, -1, 1, 5].map((step) => (
-                    <button
-                      key={step}
-                      className="focus-ring rounded-md border border-stone-300 bg-white px-2 py-2 text-sm font-black"
-                      onClick={() => setQuantityDraft(Math.max(0, quantityDraft + step))}
-                    >
-                      {step > 0 ? `+${step}` : step}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  className="focus-ring mt-3 w-full rounded-md border border-stone-300 px-3 py-3 text-sm"
-                  placeholder="메모"
-                  value={memo}
-                  onChange={(event) => setMemo(event.target.value)}
-                />
-                <div className="mt-4 flex flex-col gap-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      className="focus-ring flex items-center justify-center gap-2 rounded-md bg-stone-700 px-3 py-3 text-sm font-black text-white"
-                      onClick={() => {
-                        store.changeQuantity(order.id, quantityDraft, memo, client.managerName);
-                        setMemo("");
-                        alert("오늘 배달될 수량이 변경되었습니다.");
-                      }}
-                    >
-                      <Send size={16} />
-                      {cutoffPassed ? "이번만 변경 요청" : "이번만 변경"}
-                    </button>
-                    <button
-                      className="focus-ring flex items-center justify-center gap-2 rounded-md bg-bapsim-red px-3 py-3 text-sm font-black text-white"
-                      onClick={() => {
-                        store.changeQuantity(order.id, quantityDraft, memo, client.managerName);
-                        store.submitQuantityRequest(client.id, order.baseQuantity, quantityDraft, memo);
-                        setMemo("");
-                        alert("기본 식수 변경이 요청되었습니다. 관리자 승인 후 앞으로 계속 반영됩니다.");
-                      }}
-                    >
-                      <Send size={16} />
-                      앞으로 쭉 변경
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <button
-                      className="focus-ring flex items-center justify-center gap-2 rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
-                      onClick={() => {
-                        if (window.confirm("오늘 식사를 정말 거절하시겠습니까?")) {
-                          store.changeQuantity(order.id, 0, memo || "식사 거절", client.managerName);
-                          setQuantityDraft(0);
-                          alert("오늘 식사 거절이 완료되었습니다.");
-                        }
-                      }}
-                    >
-                      오늘 식사 거절
-                    </button>
-                    <button
-                      className="focus-ring flex items-center justify-center gap-2 rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
-                      onClick={() => {
-                        if (window.confirm("내일 식사를 미리 거절하시겠습니까? (내일 아침 배달이 취소됩니다)")) {
-                          const tomorrow = new Date();
-                          tomorrow.setDate(tomorrow.getDate() + 1);
-                          const dateString = tomorrow.toISOString().slice(0, 10);
-                          store.addHoliday(client.id, dateString, memo || "내일 식사 거절");
-                          setMemo("");
-                          alert("내일 식사 거절 처리가 완료되었습니다.");
-                        }
-                      }}
-                    >
-                      내일 미리 거절
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
+            <ClientHeaderCard clientName={client.name} address={client.address} />
+            <DateMealSection
+              title="오늘"
+              date={today}
+              orders={todayOrders}
+              mealTypes={mealTypes}
+              quantityDrafts={quantityDrafts}
+              memoDrafts={memoDrafts}
+              onDraftChange={setDraft}
+              onMemoChange={setMemo}
+              onSave={(order) => {
+                saveOrder(order, "holiday");
+                alert("식수 변경이 저장되었습니다.");
+              }}
+              onReject={(order) => {
+                if (window.confirm("해당 식사를 안먹음으로 변경하시겠습니까?")) {
+                  setDraft(order, 0);
+                  store.changeQuantityForSlot(
+                    client.id,
+                    order.date,
+                    order.mealTypeId,
+                    0,
+                    memoDrafts[slotKey(order)] || "안먹음",
+                    client.managerName,
+                    "holiday"
+                  );
+                  alert("안먹음으로 변경되었습니다.");
+                }
+              }}
+            />
+            <DateMealSection
+              title="내일"
+              date={tomorrow}
+              orders={tomorrowOrders}
+              mealTypes={mealTypes}
+              quantityDrafts={quantityDrafts}
+              memoDrafts={memoDrafts}
+              onDraftChange={setDraft}
+              onMemoChange={setMemo}
+              onSave={(order) => {
+                saveOrder(order, "holiday");
+                alert("내일 식수 변경이 저장되었습니다.");
+              }}
+              onReject={(order) => {
+                if (window.confirm("내일 해당 식사를 안먹음으로 변경하시겠습니까?")) {
+                  setDraft(order, 0);
+                  store.changeQuantityForSlot(
+                    client.id,
+                    order.date,
+                    order.mealTypeId,
+                    0,
+                    memoDrafts[slotKey(order)] || "안먹음",
+                    client.managerName,
+                    "holiday"
+                  );
+                  alert("내일 안먹음 처리가 완료되었습니다.");
+                }
+              }}
+            />
             {requests.filter((request) => request.status === "pending").length > 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <p className="font-black text-amber-900">승인 대기 중인 요청이 있습니다.</p>
@@ -325,6 +352,75 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
           </div>
         ) : null}
 
+        {tab === "week" ? (
+          <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+              <div>
+                <h2 className="text-xl font-black">주간 식수 설정</h2>
+                <p className="mt-1 text-sm font-semibold text-stone-500">
+                  이번 주와 다음 주의 특정 날짜 식수만 변경합니다. 기본 식수표는 관리자가 관리합니다.
+                </p>
+              </div>
+              <button
+                className="focus-ring inline-flex items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-3 text-sm font-black text-white"
+                onClick={saveWeeklyChanges}
+              >
+                <Save size={17} />
+                저장
+              </button>
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[640px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-stone-200 text-left text-xs font-black text-stone-500">
+                    <th className="py-3">날짜</th>
+                    {mealTypes.map((mealType) => (
+                      <th key={mealType.id} className="px-2 py-3 text-center">
+                        {mealType.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {planningDates.map((date) => {
+                    const orders = planningOrders.filter((order) => order.date === date);
+                    const day = new Date(`${date}T00:00:00`).getDay();
+                    const weekdayLabel = WEEKDAYS.find((weekday) => weekday.index === day)?.label ?? "";
+                    return (
+                      <tr key={date} className="border-b border-stone-100">
+                        <td className="py-3 font-black">
+                          {date.slice(5)}
+                          <span className="ml-1 text-xs text-stone-500">{weekdayLabel}</span>
+                        </td>
+                        {mealTypes.map((mealType) => {
+                          const order = orders.find((item) => item.mealTypeId === mealType.id);
+                          if (!order) {
+                            return <td key={mealType.id} />;
+                          }
+                          return (
+                            <td key={mealType.id} className="px-2 py-2">
+                              <input
+                                className="focus-ring h-10 w-full rounded-md border border-stone-300 text-center font-black"
+                                type="number"
+                                min={0}
+                                value={quantityDrafts[slotKey(order)] ?? order.finalQuantity}
+                                onChange={(event) => setDraft(order, Number(event.target.value) || 0)}
+                              />
+                              <p className="mt-1 text-center text-[11px] font-bold text-stone-400">
+                                기본 {order.baseQuantity} / {orderStatusLabel(order.status)}
+                              </p>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
         {tab === "history" ? (
           <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
             <h2 className="text-xl font-black">변경 내역</h2>
@@ -332,24 +428,32 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
               {logs.length === 0 && requests.length === 0 ? (
                 <Empty label="아직 변경 내역이 없습니다." />
               ) : null}
-              {logs.map((log) => (
-                <div key={log.id} className="rounded-lg border border-stone-200 p-4">
-                  <p className="font-black">
-                    {log.beforeQuantity}개 {"->"} {log.afterQuantity}개
-                  </p>
-                  <p className="mt-1 text-sm text-stone-600">{log.memo ?? "메모 없음"}</p>
-                </div>
-              ))}
-              {requests.map((request) => (
-                <div key={request.id} className="rounded-lg border border-stone-200 p-4">
-                  <p className="font-black">요청 상태: {request.status}</p>
-                  <p className="mt-1 text-sm text-stone-600">
-                    {request.currentQuantity !== undefined
-                      ? `${request.currentQuantity}개 -> ${request.requestedQuantity}개`
-                      : "업체 정보 변경 요청"}
-                  </p>
-                </div>
-              ))}
+              {logs.map((log) => {
+                const mealType = store.getMealType(log.mealTypeId);
+                return (
+                  <div key={log.id} className="rounded-lg border border-stone-200 p-4">
+                    <p className="font-black">
+                      {formatKoreanDate(log.date)} {mealType?.name ?? "식사"} {log.beforeQuantity}개 {"->"} {log.afterQuantity}개
+                    </p>
+                    <p className="mt-1 text-sm text-stone-600">{log.memo ?? "메모 없음"}</p>
+                  </div>
+                );
+              })}
+              {requests.map((request) => {
+                const mealType = request.mealTypeId ? store.getMealType(request.mealTypeId) : undefined;
+                return (
+                  <div key={request.id} className="rounded-lg border border-stone-200 p-4">
+                    <p className="font-black">요청 상태: {request.status}</p>
+                    <p className="mt-1 text-sm text-stone-600">
+                      {request.date ? `${formatKoreanDate(request.date)} ` : ""}
+                      {mealType?.name ? `${mealType.name} ` : ""}
+                      {request.currentQuantity !== undefined
+                        ? `${request.currentQuantity}개 -> ${request.requestedQuantity}개`
+                        : "업체 정보 변경 요청"}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -358,8 +462,8 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
           <div className="space-y-4">
             {!isInstalled && (
               <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
-                <h2 className="text-xl font-black">📱 바탕화면에 앱 설치하기</h2>
-                <p className="mt-1 text-sm font-semibold text-stone-600">매번 링크를 찾을 필요 없이 편리하게 접속하세요!</p>
+                <h2 className="text-xl font-black">바탕화면에 앱 설치하기</h2>
+                <p className="mt-1 text-sm font-semibold text-stone-600">매번 링크를 찾을 필요 없이 편리하게 접속하세요.</p>
                 <div className="mt-4 space-y-3 text-sm">
                   {deferredPrompt ? (
                     <button
@@ -370,16 +474,16 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                     </button>
                   ) : isIOS ? (
                     <div className="rounded-md bg-stone-50 p-3">
-                      <p className="font-bold text-stone-800">🍎 아이폰 (Safari 브라우저)</p>
+                      <p className="font-bold text-stone-800">아이폰 Safari</p>
                       <p className="mt-1 text-stone-600">
-                        화면 하단의 <b>[공유 ⍐]</b> 버튼을 누른 후,<br/> <b>[홈 화면에 추가]</b>를 선택하세요.
+                        화면 하단의 공유 버튼을 누른 후 홈 화면에 추가를 선택하세요.
                       </p>
                     </div>
                   ) : (
                     <div className="rounded-md bg-stone-50 p-3">
-                      <p className="font-bold text-stone-800">🤖 안드로이드 (크롬, 삼성인터넷)</p>
+                      <p className="font-bold text-stone-800">안드로이드 Chrome, 삼성인터넷</p>
                       <p className="mt-1 text-stone-600">
-                        화면 아래에 뜨는 <b>[홈 화면에 추가]</b> 팝업을 누르거나,<br/> 브라우저 우측 상단 메뉴(⋮)에서 <b>[앱 설치]</b>를 선택하세요.
+                        브라우저 메뉴에서 앱 설치 또는 홈 화면에 추가를 선택하세요.
                       </p>
                     </div>
                   )}
@@ -505,13 +609,13 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
       </section>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t border-stone-200 bg-white px-3 py-2">
-        <div className="mx-auto grid max-w-3xl grid-cols-4 gap-2">
+        <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1">
           {clientTabs.map((item) => {
             const Icon = item.icon;
             return (
               <button
                 key={item.id}
-                className={`focus-ring flex min-h-14 flex-col items-center justify-center gap-1 rounded-md text-xs font-black ${
+                className={`focus-ring flex min-h-14 flex-col items-center justify-center gap-1 rounded-md text-[11px] font-black ${
                   tab === item.id ? "bg-bapsim-red text-white" : "text-stone-600"
                 }`}
                 onClick={() => setTab(item.id)}
@@ -524,6 +628,118 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
         </div>
       </nav>
     </main>
+  );
+}
+
+function ClientHeaderCard({ clientName, address }: { clientName: string; address: string }) {
+  return (
+    <div className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
+      <p className="text-sm font-bold text-bapsim-red">거래처 식수 관리</p>
+      <h2 className="mt-2 text-2xl font-black">{clientName}</h2>
+      <p className="mt-1 text-sm font-semibold text-stone-600">{address}</p>
+    </div>
+  );
+}
+
+function DateMealSection({
+  title,
+  date,
+  orders,
+  mealTypes,
+  quantityDrafts,
+  memoDrafts,
+  onDraftChange,
+  onMemoChange,
+  onSave,
+  onReject
+}: {
+  title: string;
+  date: string;
+  orders: DailyMealOrder[];
+  mealTypes: ReturnType<typeof enabledMealTypes>;
+  quantityDrafts: Record<string, number>;
+  memoDrafts: Record<string, string>;
+  onDraftChange: (order: DailyMealOrder, quantity: number) => void;
+  onMemoChange: (order: DailyMealOrder, memo: string) => void;
+  onSave: (order: DailyMealOrder) => void;
+  onReject: (order: DailyMealOrder) => void;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h2 className="text-xl font-black">{title}</h2>
+        <p className="text-sm font-semibold text-stone-500">{formatKoreanDate(date)}</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {orders.map((order) => {
+          const mealType = mealTypes.find((item) => item.id === order.mealTypeId);
+          const cutoffPassed = isPastCutoffForDate(order.date, mealType?.cutoffTime);
+          const key = slotKey(order);
+          const draft = quantityDrafts[key] ?? order.finalQuantity;
+
+          return (
+            <div key={key} className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-stone-500">{mealType?.name ?? "식사"}</p>
+                  <p className="mt-2 text-4xl font-black text-bapsim-red">{order.finalQuantity}개</p>
+                  <p className="mt-2 text-sm font-semibold text-stone-600">
+                    기본 {order.baseQuantity}개 · 마감 {mealType?.cutoffTime ?? "10:00"}
+                  </p>
+                </div>
+                <span
+                  className={`inline-flex min-w-20 justify-center rounded-full border px-3 py-1 text-sm font-black ${orderStatusClass(order.status)}`}
+                >
+                  {orderStatusLabel(order.status)}
+                </span>
+              </div>
+
+              <div className="mt-5 grid grid-cols-[44px_1fr_44px] items-center gap-3">
+                <button
+                  className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
+                  onClick={() => onDraftChange(order, Math.max(0, draft - 1))}
+                >
+                  <Minus size={18} />
+                </button>
+                <input
+                  className="focus-ring h-11 w-full min-w-0 rounded-md border border-stone-300 text-center text-xl font-black"
+                  inputMode="numeric"
+                  value={draft}
+                  onChange={(event) => onDraftChange(order, Number(event.target.value.replace(/\D/g, "")) || 0)}
+                />
+                <button
+                  className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
+                  onClick={() => onDraftChange(order, draft + 1)}
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+              <input
+                className="focus-ring mt-3 w-full rounded-md border border-stone-300 px-3 py-3 text-sm"
+                placeholder="메모"
+                value={memoDrafts[key] ?? ""}
+                onChange={(event) => onMemoChange(order, event.target.value)}
+              />
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  className="focus-ring flex items-center justify-center gap-2 rounded-md bg-stone-700 px-3 py-3 text-sm font-black text-white"
+                  onClick={() => onSave(order)}
+                >
+                  <Send size={16} />
+                  {cutoffPassed ? "변경 요청" : "변경 저장"}
+                </button>
+                <button
+                  className="focus-ring rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
+                  onClick={() => onReject(order)}
+                >
+                  안먹음
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

@@ -1,8 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatTime, isPastCutoff } from "@/lib/date";
+import { formatTime, isPastCutoffForDate, todayKey } from "@/lib/date";
 import { createInitialState } from "@/lib/seed";
+import {
+  buildBaseOrder,
+  buildDefaultQuantitiesFromWeekly,
+  createLocalId,
+  enabledMealTypes,
+  getBaseQuantity,
+  getOrderForSlot,
+  getOrdersForDate,
+  normalizeAppState,
+  type WeeklyQuantities
+} from "@/lib/schedule";
 import type {
   AdminAuditLog,
   AppNotification,
@@ -10,7 +21,6 @@ import type {
   ChangeRequest,
   Client,
   DailyMealOrder,
-  DefaultMealQuantity,
   OrderChangeLog,
   Holiday
 } from "@/lib/types";
@@ -28,11 +38,7 @@ type RemoteStateResponse = {
 };
 
 function id(prefix: string) {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return createLocalId(prefix);
 }
 
 function writeState(state: AppState) {
@@ -101,6 +107,13 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
     diff.deliveryOverrides = overridesDiff;
   }
 
+  if (
+    (diff.defaultQuantities?.length || diff.orders?.length || diff.deleted?.defaultQuantities?.length) &&
+    !diff.mealTypes
+  ) {
+    diff.mealTypes = next.mealTypes;
+  }
+
   return diff;
 }
 
@@ -115,7 +128,7 @@ function createPin() {
 }
 
 export function useBapsimStore(initialState?: AppState) {
-  const [state, setState] = useState<AppState>(() => initialState ?? createInitialState());
+  const [state, setState] = useState<AppState>(() => normalizeAppState(initialState ?? createInitialState()));
   const [loaded, setLoaded] = useState(!!initialState);
   const [storageMode, setStorageMode] = useState<StorageMode>(initialState ? "supabase" : "local");
   const remoteEnabledRef = useRef(!!initialState);
@@ -126,14 +139,14 @@ export function useBapsimStore(initialState?: AppState) {
     }
 
     // fallback for local storage if no initial state
-    let nextState = createInitialState();
+    let nextState = normalizeAppState(createInitialState());
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
         try {
-          nextState = JSON.parse(saved) as AppState;
+          nextState = normalizeAppState(JSON.parse(saved) as AppState);
         } catch {
-          nextState = createInitialState();
+          nextState = normalizeAppState(createInitialState());
         }
       }
     } catch (e) {
@@ -196,6 +209,19 @@ export function useBapsimStore(initialState?: AppState) {
     [state.mealTypes]
   );
 
+  const getOrdersByDate = useCallback(
+    (date: string, mealTypeId?: string) => getOrdersForDate(state, date, mealTypeId),
+    [state]
+  );
+
+  const getClientOrdersForDate = useCallback(
+    (clientId: string, date: string) =>
+      enabledMealTypes(state).map((mealType) =>
+        getOrderForSlot(state, clientId, mealType.id, date)
+      ),
+    [state]
+  );
+
   const addNotification = useCallback(
     (notification: Omit<AppNotification, "id" | "createdAt" | "read">) => {
       commit((previous) => ({
@@ -241,7 +267,7 @@ export function useBapsimStore(initialState?: AppState) {
 
         const client = previous.clients.find((item) => item.id === order.clientId);
         const mealType = previous.mealTypes.find((item) => item.id === order.mealTypeId);
-        const cutoffPassed = isPastCutoff(mealType?.cutoffTime);
+        const cutoffPassed = isPastCutoffForDate(order.date, mealType?.cutoffTime);
         const createdAt = new Date().toISOString();
 
         if (cutoffPassed) {
@@ -318,6 +344,112 @@ export function useBapsimStore(initialState?: AppState) {
         return {
           ...previous,
           orders: previous.orders.map((item) => (item.id === order.id ? nextOrder : item)),
+          orderChangeLogs: [changeLog, ...previous.orderChangeLogs],
+          notifications
+        };
+      });
+    },
+    [commit]
+  );
+
+  const changeQuantityForSlot = useCallback(
+    (
+      clientId: string,
+      date: string,
+      mealTypeId: string,
+      afterQuantity: number,
+      memo: string,
+      actorName: string,
+      zeroStatus: "holiday" | "rejected" = "holiday"
+    ) => {
+      commit((previous) => {
+        const existing = previous.orders.find(
+          (item) =>
+            item.clientId === clientId && item.date === date && item.mealTypeId === mealTypeId
+        );
+        const order = existing ?? buildBaseOrder(previous, clientId, mealTypeId, date);
+        const client = previous.clients.find((item) => item.id === clientId);
+        const mealType = previous.mealTypes.find((item) => item.id === mealTypeId);
+        const cutoffPassed = isPastCutoffForDate(date, mealType?.cutoffTime);
+        const createdAt = new Date().toISOString();
+        const ordersWithBase = existing ? previous.orders : [...previous.orders, order];
+
+        if (cutoffPassed) {
+          const request: ChangeRequest = {
+            id: id("request"),
+            type: afterQuantity === 0 ? "late_rejection" : "late_quantity",
+            status: "pending",
+            clientId,
+            orderId: order.id,
+            mealTypeId,
+            date,
+            currentQuantity: order.finalQuantity,
+            requestedQuantity: afterQuantity,
+            memo,
+            requestedAt: createdAt
+          };
+
+          const notification: AppNotification = {
+            id: id("notification"),
+            target: "admin",
+            clientId,
+            title: "마감 후 변경 요청",
+            body: `${client?.name ?? "거래처"}이 ${mealType?.name ?? "식사"} ${order.finalQuantity}개에서 ${afterQuantity}개로 변경 요청했습니다.`,
+            read: false,
+            createdAt
+          };
+
+          return {
+            ...previous,
+            orders: ordersWithBase,
+            changeRequests: [request, ...previous.changeRequests],
+            notifications: [notification, ...previous.notifications]
+          };
+        }
+
+        const important = isImportantChange(order.finalQuantity, afterQuantity);
+        const nextStatus =
+          afterQuantity === 0 ? zeroStatus : afterQuantity === order.baseQuantity ? "normal" : "changed";
+        const nextOrder: DailyMealOrder = {
+          ...order,
+          finalQuantity: afterQuantity,
+          status: nextStatus,
+          memo,
+          requiresReview: important || (afterQuantity === 0 && zeroStatus === "rejected"),
+          acknowledged: false,
+          updatedAt: createdAt
+        };
+
+        const changeLog: OrderChangeLog = {
+          id: id("log"),
+          orderId: order.id,
+          clientId,
+          mealTypeId,
+          date,
+          actorType: "client",
+          actorName,
+          beforeQuantity: order.finalQuantity,
+          afterQuantity,
+          memo,
+          createdAt
+        };
+
+        const notifications = [...previous.notifications];
+        if (nextOrder.requiresReview) {
+          notifications.unshift({
+            id: id("notification"),
+            target: "admin",
+            clientId,
+            title: afterQuantity === 0 ? "식사 거절" : "중요 수량 변경",
+            body: `${client?.name ?? "거래처"} ${mealType?.name ?? "식사"} ${order.finalQuantity}개 -> ${afterQuantity}개`,
+            read: false,
+            createdAt
+          });
+        }
+
+        return {
+          ...previous,
+          orders: ordersWithBase.map((item) => (item.id === order.id ? nextOrder : item)),
           orderChangeLogs: [changeLog, ...previous.orderChangeLogs],
           notifications
         };
@@ -638,14 +770,12 @@ export function useBapsimStore(initialState?: AppState) {
       input: Pick<
         Client,
         "name" | "address" | "addressDetail" | "managerName" | "managerPhone" | "deliveryMemo"
-      > & { defaultQuantity: number },
+      > & { weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
       adminName: string
     ) => {
       commit((previous) => {
         const createdAt = new Date().toISOString();
-        const date = previous.orders[0]?.date ?? new Date().toISOString().slice(0, 10);
-        const mealTypeId = previous.mealTypes[0]?.id ?? "meal-lunch";
-        const weekday = new Date(`${date}T00:00:00`).getDay();
+        const date = todayKey();
         const deliveryOrder =
           Math.max(0, ...previous.clients.map((client) => client.deliveryOrder)) + 1;
         const clientId = id("client");
@@ -669,32 +799,35 @@ export function useBapsimStore(initialState?: AppState) {
           lastSeenAt: undefined
         };
 
-        const defaultQuantity: DefaultMealQuantity = {
-          id: id("default"),
-          clientId,
-          mealTypeId,
-          weekday,
-          quantity: input.defaultQuantity
+        const temporaryState = {
+          ...previous,
+          clients: [...previous.clients, client]
         };
-
-        const order: DailyMealOrder = {
-          id: id("order"),
-          date,
+        const defaultQuantities = buildDefaultQuantitiesFromWeekly({
+          state: temporaryState,
           clientId,
-          mealTypeId,
-          baseQuantity: input.defaultQuantity,
-          finalQuantity: input.defaultQuantity,
-          status: "normal",
-          requiresReview: false,
-          acknowledged: false,
-          updatedAt: createdAt
-        };
+          weeklyQuantities: input.weeklyQuantities
+        });
+        const holidays = input.exceptionRules.map((rule) => ({
+          ...rule,
+          id: id("holiday"),
+          clientId
+        }));
+        const stateWithDefaults = normalizeAppState({
+          ...temporaryState,
+          defaultQuantities: [...previous.defaultQuantities, ...defaultQuantities],
+          holidays: [...previous.holidays, ...holidays]
+        });
+        const orders = enabledMealTypes(stateWithDefaults).map((mealType) =>
+          buildBaseOrder(stateWithDefaults, clientId, mealType.id, date)
+        );
 
         return {
           ...previous,
           clients: [...previous.clients, client],
-          defaultQuantities: [...previous.defaultQuantities, defaultQuantity],
-          orders: [...previous.orders, order],
+          defaultQuantities: [...previous.defaultQuantities, ...defaultQuantities],
+          holidays: [...previous.holidays, ...holidays],
+          orders: [...previous.orders, ...orders],
           auditLogs: [
             {
               id: id("audit"),
@@ -720,7 +853,7 @@ export function useBapsimStore(initialState?: AppState) {
           Client,
           "name" | "address" | "addressDetail" | "managerName" | "managerPhone" | "deliveryMemo"
         >
-      >,
+      > & { weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },
       adminName: string
     ) => {
       commit((previous) => {
@@ -729,18 +862,77 @@ export function useBapsimStore(initialState?: AppState) {
           return previous;
         }
 
+        const { weeklyQuantities, exceptionRules, ...clientUpdates } = updates;
+        let nextDefaultQuantities = previous.defaultQuantities;
+        let nextHolidays = previous.holidays;
+        let nextOrders = previous.orders;
+
+        if (weeklyQuantities) {
+          const replacementDefaults = buildDefaultQuantitiesFromWeekly({
+            state: previous,
+            clientId,
+            weeklyQuantities
+          });
+
+          nextDefaultQuantities = [
+            ...previous.defaultQuantities.filter((item) => item.clientId !== clientId),
+            ...replacementDefaults
+          ];
+        }
+
+        if (exceptionRules) {
+          nextHolidays = [
+            ...previous.holidays.filter((item) => !(item.clientId === clientId && item.ruleType)),
+            ...exceptionRules.map((rule) => ({
+              ...rule,
+              id: rule.id || id("holiday"),
+              clientId
+            }))
+          ];
+        }
+
+        if (weeklyQuantities || exceptionRules) {
+          const nextForBase = normalizeAppState({
+            ...previous,
+            defaultQuantities: nextDefaultQuantities,
+            holidays: nextHolidays
+          });
+
+          nextOrders = previous.orders.map((order) => {
+            if (order.clientId !== clientId || order.date < todayKey()) {
+              return order;
+            }
+
+            const baseQuantity = getBaseQuantity(nextForBase, clientId, order.mealTypeId, order.date);
+            const followsDefault = order.status === "normal" || order.status === "holiday";
+            const status = followsDefault ? (baseQuantity === 0 ? "holiday" : "normal") : order.status;
+
+            return {
+              ...order,
+              baseQuantity,
+              finalQuantity: followsDefault ? baseQuantity : order.finalQuantity,
+              status,
+              memo: status === "holiday" ? order.memo || "기본 안먹음" : order.memo,
+              updatedAt: new Date().toISOString()
+            };
+          });
+        }
+
         return {
           ...previous,
+          defaultQuantities: nextDefaultQuantities,
+          holidays: nextHolidays,
+          orders: nextOrders,
           clients: previous.clients.map((item) =>
-            item.id === clientId ? { ...item, ...updates } : item
+            item.id === clientId ? { ...item, ...clientUpdates } : item
           ),
           auditLogs: [
             {
               id: id("audit"),
-              action: "update_client",
+              action: weeklyQuantities || exceptionRules ? "update_meal_settings" : "update_client",
               adminName,
-              targetLabel: updates.name ?? client.name,
-              detail: "거래처 정보 수정",
+              targetLabel: clientUpdates.name ?? client.name,
+              detail: weeklyQuantities || exceptionRules ? "기본 식수 설정 수정" : "거래처 정보 수정",
               createdAt: new Date().toISOString()
             },
             ...previous.auditLogs
@@ -866,9 +1058,12 @@ export function useBapsimStore(initialState?: AppState) {
     totals,
     getClient,
     getMealType,
+    getOrdersByDate,
+    getClientOrdersForDate,
     addNotification,
     addAuditLog,
     changeQuantity,
+    changeQuantityForSlot,
     acknowledgeOrder,
     resolveRequest,
     submitInfoRequest,

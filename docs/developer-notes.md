@@ -1,6 +1,6 @@
 # Developer Notes
 
-Last updated: 2026-06-29 KST
+Last updated: 2026-07-09 KST
 
 ## Purpose
 
@@ -23,6 +23,9 @@ This file is the first stop for the next agent or developer continuing the proje
 - **Granular State Sync (Diff)**: The old whole-state sync bridge (`/api/state`) was replaced by a Server Action (`syncAppStateDiffAction`). The client now calculates the diff (inserted, updated, deleted items) and sends only the changes to Supabase, vastly improving performance and saving bandwidth.
 - **Persisted Delete Diff**: Client-side deletes now include `deleted` IDs in `AppStateDiff`, and `saveAppStateDiffToSupabase` applies matching Supabase `delete` operations before upserts. This fixes deleted test clients reappearing after refresh because SSR reloaded stale rows from Supabase.
 - **Push Notification Toggle**: The admin header notification button now reflects browser push status (`on`, `off`, `blocked`, `unsupported`) and toggles push subscriptions on/off. `/api/push/subscribe` supports `DELETE` to remove server-side subscriptions when the admin turns notifications off.
+- **Weekly Meal Scheduling**: The app now supports client-specific weekday default quantities by meal type, starting with lunch and dinner. Admins edit the `Mon-Sun x lunch/dinner` grid in each client form. Customers can only change date-specific orders, not the admin default table.
+- **Date & Meal Selection**: The admin dashboard has `today / tomorrow / date input` and meal-type selectors. Customer pages show today/tomorrow cards plus a two-week weekly setting table.
+- **Simple No-Meal Rules**: Monthly last-day, monthly day, and one-off date no-meal rules are stored through the existing `holidays` table using an encoded JSON payload in `name`. This avoids an immediate Supabase table migration while preserving structured parsing in `lib/schedule.ts`.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
 - **Mobile Layout Optimization**: Prevented horizontal scrolling issues by removing fixed minimum widths (`min-w-[...]`) from tables, hiding non-essential columns on mobile, and ensuring long addresses wrap correctly with `break-all`.
 
@@ -66,6 +69,7 @@ Expected current result:
 
 - `components/admin-dashboard.tsx`: admin UI, tabs, client management, delivery table, CSV actions.
 - `components/client-app.tsx`: customer PIN login, quantity change, rejection, profile change requests.
+- `lib/schedule.ts`: shared scheduling rules for lunch/dinner defaults, weekday quantities, virtual daily orders, and no-meal exception rules.
 - `lib/push-client.ts`: browser push support detection, permission handling, push subscribe/unsubscribe toggle.
 - `lib/use-bapsim-store.ts`: main client-side state store, calculating state diffs including deleted IDs and syncing via Server Action.
 - `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows and applies diff upserts/deletes.
@@ -80,12 +84,12 @@ Expected current result:
 The app state currently contains:
 
 - `clients`: customer companies, addresses, manager contact, delivery order, invite code/PIN.
-- `mealTypes`: meal categories, currently lunch only.
+- `mealTypes`: meal categories, currently lunch and dinner.
 - `defaultQuantities`: weekday and meal-type default quantities.
 - `orders`: date-specific meal quantities and statuses.
 - `orderChangeLogs`: quantity change history.
 - `changeRequests`: late changes and company/contact update requests.
-- `holidays`: global or client-specific holidays.
+- `holidays`: global/client-specific holidays and encoded simple no-meal exception rules.
 - `notifications`: in-app notification records.
 - `auditLogs`: important admin action history.
 - `deliveryOverrides`: per-day temporary delivery ordering.

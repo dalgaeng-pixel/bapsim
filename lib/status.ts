@@ -6,7 +6,7 @@ export function orderStatusLabel(status: OrderStatus) {
     changed: "변경",
     rejected: "거절",
     pending: "승인대기",
-    holiday: "휴무"
+    holiday: "안먹음"
   };
 
   return labels[status];

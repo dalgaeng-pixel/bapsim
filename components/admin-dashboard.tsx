@@ -40,10 +40,19 @@ import {
   type PushNotificationStatus
 } from "@/lib/push-client";
 import { buildDeliveryRows, buildMonthlyRows, downloadCsv } from "@/lib/export";
-import { formatKoreanDate, isPastCutoff } from "@/lib/date";
+import { formatKoreanDate, isPastCutoffForDate, todayKey } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel, requestTypeLabel } from "@/lib/status";
 import { useBapsimStore } from "@/lib/use-bapsim-store";
-import type { Client, DailyMealOrder, AppState } from "@/lib/types";
+import {
+  addDays,
+  createHolidayRule,
+  enabledMealTypes,
+  getWeeklyQuantitiesForClient,
+  makeRuleStorageDate,
+  WEEKDAYS,
+  type WeeklyQuantities
+} from "@/lib/schedule";
+import type { Client, DailyMealOrder, AppState, Holiday, HolidayRuleType } from "@/lib/types";
 
 const tabs = [
   { id: "overview", label: "오늘 현황", icon: ListChecks },
@@ -125,12 +134,17 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const [search, setSearch] = useState("");
   const [pushStatus, setPushStatus] = useState<VisiblePushStatus>("checking");
   const [pushBusy, setPushBusy] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(todayKey());
+  const [selectedMealTypeId, setSelectedMealTypeId] = useState<string | null>(null);
 
-  const { state, activeMealType, totals } = store;
-  const cutoffPassed = isPastCutoff(activeMealType?.cutoffTime);
+  const { state } = store;
+  const mealTypes = enabledMealTypes(state);
+  const selectedMealType =
+    mealTypes.find((mealType) => mealType.id === selectedMealTypeId) ?? mealTypes[0];
+  const cutoffPassed = isPastCutoffForDate(selectedDate, selectedMealType?.cutoffTime);
 
   const sortedOrders = useMemo(() => {
-    const key = `${state.orders[0]?.date ?? ""}:${activeMealType?.id ?? ""}`;
+    const key = `${selectedDate}:${selectedMealType?.id ?? ""}`;
     const override = state.deliveryOverrides[key];
     const activeClientIds = [...state.clients]
       .filter((client) => client.status === "active")
@@ -138,12 +152,12 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       .map((client) => client.id);
     const orderIds = override ?? activeClientIds;
 
-    return [...state.orders].sort((a, b) => {
+    return store.getOrdersByDate(selectedDate, selectedMealType?.id).sort((a, b) => {
       const left = orderIds.indexOf(a.clientId);
       const right = orderIds.indexOf(b.clientId);
       return left - right;
     });
-  }, [activeMealType?.id, state.clients, state.deliveryOverrides, state.orders]);
+  }, [selectedDate, selectedMealType?.id, state.clients, state.deliveryOverrides, store]);
 
   const visibleOrders = sortedOrders.filter((order) => {
     const client = store.getClient(order.clientId);
@@ -154,9 +168,21 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const deliveryOrders = visibleOrders.filter(
     (order) => order.status !== "rejected" && order.status !== "holiday" && order.finalQuantity > 0
   );
+  const totals = {
+    finalQuantity: visibleOrders
+      .filter((order) => order.status !== "holiday")
+      .reduce((sum, order) => sum + order.finalQuantity, 0),
+    rejectedCount: visibleOrders.filter((order) => order.status === "rejected" || order.status === "holiday").length
+  };
 
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
-  const reviewOrders = state.orders.filter((order) => order.requiresReview && !order.acknowledged);
+  const reviewOrders = state.orders.filter(
+    (order) =>
+      order.date === selectedDate &&
+      (!selectedMealType || order.mealTypeId === selectedMealType.id) &&
+      order.requiresReview &&
+      !order.acknowledged
+  );
   const adminUnreadCount = state.notifications.filter((n) => n.target === "admin" && !n.read).length;
   const PushIcon = pushStatus === "on" ? Bell : BellOff;
   const pushButtonTone =
@@ -210,9 +236,12 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
           <Logo compact />
           <div className="hidden items-center gap-3 text-sm font-bold text-stone-700 md:flex">
             <CalendarDays size={18} />
-            {formatKoreanDate(state.orders[0]?.date ?? "")}
+            {formatKoreanDate(selectedDate)}
             <span className="rounded-full bg-stone-100 px-3 py-1">
               {cutoffPassed ? "마감됨" : "변경 가능"}
+            </span>
+            <span className="rounded-full bg-stone-100 px-3 py-1">
+              {selectedMealType?.name ?? "식사"}
             </span>
             <span className="rounded-full bg-bapsim-rice px-3 py-1 text-bapsim-red">
               {storageModeLabel[store.storageMode]}
@@ -274,20 +303,69 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
         </nav>
 
         <section className="space-y-4">
+          <div className="rounded-lg border border-stone-200 bg-white p-3 shadow-soft no-print">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className={`focus-ring rounded-md px-3 py-2 text-sm font-black ${
+                    selectedDate === todayKey()
+                      ? "bg-bapsim-red text-white"
+                      : "border border-stone-300 bg-white"
+                  }`}
+                  onClick={() => setSelectedDate(todayKey())}
+                >
+                  오늘
+                </button>
+                <button
+                  className={`focus-ring rounded-md px-3 py-2 text-sm font-black ${
+                    selectedDate === addDays(todayKey(), 1)
+                      ? "bg-bapsim-red text-white"
+                      : "border border-stone-300 bg-white"
+                  }`}
+                  onClick={() => setSelectedDate(addDays(todayKey(), 1))}
+                >
+                  내일
+                </button>
+                <input
+                  className="focus-ring rounded-md border border-stone-300 px-3 py-2 text-sm font-bold"
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {mealTypes.map((mealType) => (
+                  <button
+                    key={mealType.id}
+                    className={`focus-ring rounded-md px-3 py-2 text-sm font-black ${
+                      selectedMealType?.id === mealType.id
+                        ? "bg-stone-900 text-white"
+                        : "border border-stone-300 bg-white"
+                    }`}
+                    onClick={() => setSelectedMealTypeId(mealType.id)}
+                  >
+                    {mealType.name}
+                    <span className="ml-2 text-xs opacity-70">{mealType.cutoffTime}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="오늘 총 식수" value={`${totals.finalQuantity}개`} tone="red" />
+            <StatCard label="선택일 총 식수" value={`${totals.finalQuantity}개`} tone="red" />
             <StatCard label="승인 대기" value={store.pendingRequestCount} tone="gold" />
-            <StatCard label="중요 확인" value={store.reviewOrderCount} tone="stone" />
-            <StatCard label="식사 거절" value={totals.rejectedCount} tone="green" />
+            <StatCard label="중요 확인" value={reviewOrders.length} tone="stone" />
+            <StatCard label="안먹음/거절" value={totals.rejectedCount} tone="green" />
           </div>
 
           {tab === "overview" ? (
             <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft print-surface">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
-                  <h2 className="text-xl font-black">오늘 현황</h2>
+                  <h2 className="text-xl font-black">식수 현황</h2>
                   <p className="text-sm font-semibold text-stone-500">
-                    {activeMealType?.name ?? "식사"} 기준 최종 수량과 거래처 상태
+                    {formatKoreanDate(selectedDate)} {selectedMealType?.name ?? "식사"} 기준 최종 수량과 거래처 상태
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 no-print">
@@ -418,9 +496,9 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
             <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft print-surface">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
-                  <h2 className="text-xl font-black">오늘 배달표</h2>
+                  <h2 className="text-xl font-black">배달표</h2>
                   <p className="text-sm font-semibold text-stone-500">
-                    거절/휴무 거래처는 배달 대상에서 제외됩니다.
+                    {formatKoreanDate(selectedDate)} {selectedMealType?.name ?? "식사"} 기준, 거절/안먹음 거래처는 배달 대상에서 제외됩니다.
                   </p>
                 </div>
                 <div className="flex gap-2 no-print">
@@ -686,7 +764,8 @@ type ClientFormState = Pick<
   Client,
   "name" | "address" | "addressDetail" | "managerName" | "managerPhone" | "deliveryMemo"
 > & {
-  defaultQuantity: number;
+  weeklyQuantities: WeeklyQuantities;
+  exceptionRules: Holiday[];
 };
 
 const emptyClientForm: ClientFormState = {
@@ -696,7 +775,8 @@ const emptyClientForm: ClientFormState = {
   managerName: "",
   managerPhone: "",
   deliveryMemo: "",
-  defaultQuantity: 0
+  weeklyQuantities: {},
+  exceptionRules: []
 };
 
 function ClientManager({
@@ -711,6 +791,15 @@ function ClientManager({
   const [form, setForm] = useState<ClientFormState>(emptyClientForm);
   const [error, setError] = useState("");
   const [qrClient, setQrClient] = useState<Client | null>(null);
+  const mealTypes = enabledMealTypes(store.state);
+
+  const createBlankWeeklyQuantities = () =>
+    Object.fromEntries(
+      mealTypes.map((mealType) => [
+        mealType.id,
+        Object.fromEntries(WEEKDAYS.map((weekday) => [weekday.index, 0]))
+      ])
+    ) as WeeklyQuantities;
 
   const getInviteLink = (inviteCode: string) => {
     if (typeof window !== "undefined") {
@@ -730,7 +819,11 @@ function ClientManager({
 
   const startCreate = () => {
     setEditingClientId(null);
-    setForm(emptyClientForm);
+    setForm({
+      ...emptyClientForm,
+      weeklyQuantities: createBlankWeeklyQuantities(),
+      exceptionRules: []
+    });
     setError("");
     setFormOpen(true);
   };
@@ -744,7 +837,10 @@ function ClientManager({
       managerName: client.managerName,
       managerPhone: client.managerPhone,
       deliveryMemo: client.deliveryMemo,
-      defaultQuantity: 0
+      weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
+      exceptionRules: store.state.holidays.filter(
+        (holiday) => holiday.clientId === client.id && holiday.ruleType
+      )
     });
     setError("");
     setFormOpen(true);
@@ -757,16 +853,9 @@ function ClientManager({
     }
 
     if (editingClientId) {
-      const { defaultQuantity: _defaultQuantity, ...clientUpdates } = form;
-      store.updateClientRecord(editingClientId, clientUpdates, adminName);
+      store.updateClientRecord(editingClientId, form, adminName);
     } else {
-      store.createClientRecord(
-        {
-          ...form,
-          defaultQuantity: Math.max(0, form.defaultQuantity)
-        },
-        adminName
-      );
+      store.createClientRecord(form, adminName);
     }
 
     setFormOpen(false);
@@ -812,15 +901,6 @@ function ClientManager({
               onChange={(value) => setForm((current) => ({ ...current, managerPhone: value }))}
             />
             <Field
-              label="기본 수량"
-              type="number"
-              value={String(form.defaultQuantity)}
-              disabled={Boolean(editingClientId)}
-              onChange={(value) =>
-                setForm((current) => ({ ...current, defaultQuantity: Number(value) || 0 }))
-              }
-            />
-            <Field
               label="주소"
               value={form.address}
               onChange={(value) => setForm((current) => ({ ...current, address: value }))}
@@ -841,6 +921,20 @@ function ClientManager({
               />
             </label>
           </div>
+          <WeeklyQuantityEditor
+            mealTypes={mealTypes}
+            weeklyQuantities={form.weeklyQuantities}
+            onChange={(weeklyQuantities) =>
+              setForm((current) => ({ ...current, weeklyQuantities }))
+            }
+          />
+          <ExceptionRuleEditor
+            mealTypes={mealTypes}
+            rules={form.exceptionRules}
+            onChange={(exceptionRules) =>
+              setForm((current) => ({ ...current, exceptionRules }))
+            }
+          />
           {error ? <p className="mt-3 text-sm font-black text-bapsim-red">{error}</p> : null}
           <div className="mt-4 flex flex-wrap gap-2">
             <button
@@ -992,6 +1086,220 @@ function ClientManager({
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function WeeklyQuantityEditor({
+  mealTypes,
+  weeklyQuantities,
+  onChange
+}: {
+  mealTypes: ReturnType<typeof enabledMealTypes>;
+  weeklyQuantities: WeeklyQuantities;
+  onChange: (weeklyQuantities: WeeklyQuantities) => void;
+}) {
+  const setQuantity = (mealTypeId: string, weekday: number, quantity: number) => {
+    onChange({
+      ...weeklyQuantities,
+      [mealTypeId]: {
+        ...(weeklyQuantities[mealTypeId] ?? {}),
+        [weekday]: Math.max(0, quantity)
+      }
+    });
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border border-red-100 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-black">기본 식수표</h3>
+          <p className="mt-1 text-sm font-semibold text-stone-500">
+            거래처 기본값입니다. 0개는 해당 요일/식사를 안먹음으로 처리합니다.
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-stone-200 text-left text-xs font-black text-stone-500">
+              <th className="py-2">식사</th>
+              {WEEKDAYS.map((weekday) => (
+                <th key={weekday.index} className="px-2 py-2 text-center">
+                  {weekday.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {mealTypes.map((mealType) => (
+              <tr key={mealType.id} className="border-b border-stone-100">
+                <td className="py-2 font-black">{mealType.name}</td>
+                {WEEKDAYS.map((weekday) => (
+                  <td key={weekday.index} className="px-2 py-2">
+                    <input
+                      className="focus-ring h-10 w-full rounded-md border border-stone-300 text-center font-black"
+                      type="number"
+                      min={0}
+                      value={weeklyQuantities[mealType.id]?.[weekday.index] ?? 0}
+                      onChange={(event) =>
+                        setQuantity(mealType.id, weekday.index, Number(event.target.value) || 0)
+                      }
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ExceptionRuleEditor({
+  mealTypes,
+  rules,
+  onChange
+}: {
+  mealTypes: ReturnType<typeof enabledMealTypes>;
+  rules: Holiday[];
+  onChange: (rules: Holiday[]) => void;
+}) {
+  const [ruleType, setRuleType] = useState<HolidayRuleType>("monthly_last_day");
+  const [monthDay, setMonthDay] = useState(31);
+  const [specificDate, setSpecificDate] = useState(todayKey());
+  const [selectedMealTypeIds, setSelectedMealTypeIds] = useState<string[]>(
+    mealTypes.map((mealType) => mealType.id)
+  );
+
+  useEffect(() => {
+    setSelectedMealTypeIds((current) =>
+      current.length > 0 ? current : mealTypes.map((mealType) => mealType.id)
+    );
+  }, [mealTypes]);
+
+  const toggleMealType = (mealTypeId: string) => {
+    setSelectedMealTypeIds((current) =>
+      current.includes(mealTypeId)
+        ? current.filter((item) => item !== mealTypeId)
+        : [...current, mealTypeId]
+    );
+  };
+
+  const addRule = () => {
+    const safeMealTypeIds =
+      selectedMealTypeIds.length > 0 ? selectedMealTypeIds : mealTypes.map((mealType) => mealType.id);
+    const safeMonthDay = Math.max(1, Math.min(31, monthDay));
+    const label =
+      ruleType === "monthly_last_day"
+        ? "매달 말일 안먹음"
+        : ruleType === "monthly_day"
+          ? `매월 ${safeMonthDay}일 안먹음`
+          : `${specificDate} 안먹음`;
+
+    onChange([
+      ...rules,
+      createHolidayRule({
+        date: makeRuleStorageDate(ruleType, specificDate, safeMonthDay),
+        name: label,
+        ruleType,
+        monthDay: ruleType === "monthly_day" ? safeMonthDay : undefined,
+        mealTypeIds: safeMealTypeIds
+      })
+    ]);
+  };
+
+  const mealNames = (mealTypeIds?: string[]) =>
+    mealTypes
+      .filter((mealType) => !mealTypeIds?.length || mealTypeIds.includes(mealType.id))
+      .map((mealType) => mealType.name)
+      .join(", ");
+
+  return (
+    <div className="mt-4 rounded-lg border border-red-100 bg-white p-4">
+      <h3 className="font-black">정기 안먹음 / 특정일 예외</h3>
+      <p className="mt-1 text-sm font-semibold text-stone-500">
+        말일, 매월 특정일, 특정 날짜에 점심/저녁별로 안먹음을 설정합니다.
+      </p>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr]">
+        <select
+          className="focus-ring rounded-md border border-stone-300 bg-white px-3 py-3 text-sm font-bold"
+          value={ruleType}
+          onChange={(event) => setRuleType(event.target.value as HolidayRuleType)}
+        >
+          <option value="monthly_last_day">매달 말일</option>
+          <option value="monthly_day">매월 특정일</option>
+          <option value="specific_date">특정 날짜 하루</option>
+        </select>
+        {ruleType === "monthly_day" ? (
+          <input
+            className="focus-ring rounded-md border border-stone-300 px-3 py-3 text-sm font-bold"
+            type="number"
+            min={1}
+            max={31}
+            value={monthDay}
+            onChange={(event) => setMonthDay(Number(event.target.value) || 1)}
+          />
+        ) : null}
+        {ruleType === "specific_date" ? (
+          <input
+            className="focus-ring rounded-md border border-stone-300 px-3 py-3 text-sm font-bold"
+            type="date"
+            value={specificDate}
+            onChange={(event) => setSpecificDate(event.target.value)}
+          />
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {mealTypes.map((mealType) => (
+          <label
+            key={mealType.id}
+            className="inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black"
+          >
+            <input
+              type="checkbox"
+              checked={selectedMealTypeIds.includes(mealType.id)}
+              onChange={() => toggleMealType(mealType.id)}
+            />
+            {mealType.name}
+          </label>
+        ))}
+        <button
+          className="focus-ring rounded-md bg-stone-900 px-4 py-2 text-sm font-black text-white"
+          onClick={addRule}
+          type="button"
+        >
+          예외 추가
+        </button>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {rules.length === 0 ? (
+          <EmptyState label="등록된 예외 규칙이 없습니다." />
+        ) : (
+          rules.map((rule) => (
+            <div
+              key={rule.id}
+              className="flex flex-col gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="font-black">{rule.name}</p>
+                <p className="text-sm font-semibold text-stone-500">{mealNames(rule.mealTypeIds)}</p>
+              </div>
+              <button
+                className="focus-ring rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-black text-bapsim-red"
+                type="button"
+                onClick={() => onChange(rules.filter((item) => item.id !== rule.id))}
+              >
+                삭제
+              </button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

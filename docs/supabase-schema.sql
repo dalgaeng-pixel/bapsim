@@ -198,6 +198,10 @@ insert into public.meal_types (name, cutoff_time, enabled)
 select '점심', '10:00', true
 where not exists (select 1 from public.meal_types where name = '점심');
 
+insert into public.meal_types (name, cutoff_time, enabled)
+select '저녁', '15:00', true
+where not exists (select 1 from public.meal_types where name = '저녁');
+
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   admin_id text not null,

@@ -11,6 +11,7 @@ import type {
   MealType,
   OrderChangeLog
 } from "@/lib/types";
+import { decodeHoliday, encodeHolidayName, normalizeAppState } from "@/lib/schedule";
 
 type ClientRow = {
   id: string;
@@ -195,7 +196,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     deliveryOverrideRows.map((row) => [`${row.order_date}:${row.meal_type_id}`, row.client_order])
   );
 
-  return {
+  return normalizeAppState({
     clients: clientRows.map((row): Client => ({
       id: row.id,
       name: row.name,
@@ -272,12 +273,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       resolvedAt: row.resolved_at ?? undefined,
       resolvedBy: row.resolved_by ?? undefined
     })),
-    holidays: holidayRows.map((row): Holiday => ({
-      id: row.id,
-      date: row.holiday_date,
-      name: row.name,
-      clientId: row.client_id ?? undefined
-    })),
+    holidays: holidayRows.map((row): Holiday => decodeHoliday(row)),
     notifications: notificationRows.map((row): AppNotification => ({
       id: row.id,
       target: row.target,
@@ -296,7 +292,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       createdAt: row.created_at
     })),
     deliveryOverrides
-  };
+  });
 }
 
 export async function saveAppStateToSupabase(client: SupabaseClient, state: AppState) {
@@ -412,7 +408,7 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     state.holidays.map((item) => ({
       id: item.id,
       holiday_date: item.date,
-      name: item.name,
+      name: encodeHolidayName(item),
       client_id: item.clientId ?? null
     }))
   );
@@ -622,7 +618,7 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
       diff.holidays.map((item) => ({
         id: item.id,
         holiday_date: item.date,
-        name: item.name,
+        name: encodeHolidayName(item),
         client_id: item.clientId ?? null
       }))
     );
