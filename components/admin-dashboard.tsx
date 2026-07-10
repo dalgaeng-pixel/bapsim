@@ -943,7 +943,7 @@ function ClientManager({
 
   const copyInviteLink = (client: Client) => {
     const link = getInviteLink(client.inviteCode);
-    const message = `저희 밥심을 이용해주셔서 감사합니다. 아래 링크를 클릭하시면 간편 배달 화면으로 이동됩니다. 기본정보는 저희 식당에서 입력하여 제공되오니, 변동사항이 있을시 링크를 통하여 식사인원 변경이 있거나, 식사가 필요없을시 이용하여 주시기 바랍니다.\n\n▶ 전용 접속 링크: ${link}\n▶ 보안 PIN 번호: ${client.invitePin}`;
+    const message = `저희 밥심을 이용해주셔서 감사합니다. 아래 링크를 클릭하시면 식사 관리 화면으로 이동됩니다. 기본정보는 저희 식당에서 입력하여 제공되오니, 변동사항이 있을시에만 링크를 통하여 입력해주시면 감사하겠습니다.\n\n*매번 사용하는게 아닙니다. 특별히 변동사항이 있을시에만 사용바랍니다.\n\n▶ 전용 접속 링크: ${link}\n▶ 보안 PIN 번호: ${client.invitePin}`;
     
     navigator.clipboard.writeText(message).then(() => {
       alert("초대 링크와 PIN 번호, 안내 메시지가 복사되었습니다!\n(카카오톡 등에 바로 붙여넣기 하시면 됩니다.)");
