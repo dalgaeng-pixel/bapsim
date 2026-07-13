@@ -165,7 +165,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const visibleOrders = sortedOrders.filter((order) => {
     const client = store.getClient(order.clientId);
     const haystack = `${client?.name ?? ""} ${client?.address ?? ""} ${client?.managerName ?? ""}`;
-    return haystack.includes(search);
+    return isClientStartedOnDate(client, order.date) && haystack.includes(search);
   });
 
   const deliveryOrders = visibleOrders.filter(
