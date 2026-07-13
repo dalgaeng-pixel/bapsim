@@ -1,6 +1,6 @@
 import type { AppState, DailyMealOrder } from "@/lib/types";
 import { todayKey } from "@/lib/date";
-import { getMonthlySettlementForClient } from "@/lib/schedule";
+import { getMonthlySettlementForClient, mealSupplyTypeLabel } from "@/lib/schedule";
 
 function csvEscape(value: string | number | undefined) {
   const text = String(value ?? "");
@@ -20,13 +20,14 @@ export function downloadCsv(filename: string, rows: Array<Array<string | number 
 
 export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
   return [
-    ["순서", "업체명", "식사", "수량", "주소", "상세주소", "배달 메모", "상태"],
+    ["순서", "업체명", "유형", "식사", "수량", "주소", "상세주소", "배달 메모", "상태"],
     ...orders.map((order, index) => {
       const client = state.clients.find((item) => item.id === order.clientId);
       const mealType = state.mealTypes.find((item) => item.id === order.mealTypeId);
       return [
         index + 1,
         client?.name,
+        mealSupplyTypeLabel(client?.mealSupplyType),
         mealType?.name,
         order.finalQuantity,
         client?.address,
@@ -40,12 +41,13 @@ export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
 
 export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)) {
   return [
-    ["월", "업체명", "납품 시작일", "기본 수량 합계", "자동 최종", "정산 최종", "거절 건수", "변경 건수", "정산 메모"],
+    ["월", "업체명", "유형", "납품 시작일", "기본 수량 합계", "자동 최종", "정산 최종", "거절 건수", "변경 건수", "정산 메모"],
     ...state.clients.map((client) => {
       const settlement = getMonthlySettlementForClient(state, client.id, month);
       return [
         month,
         client.name,
+        mealSupplyTypeLabel(client.mealSupplyType),
         client.deliveryStartDate ?? "즉시",
         settlement.computedBaseQuantity,
         settlement.computedFinalQuantity,

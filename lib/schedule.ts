@@ -6,6 +6,7 @@ import type {
   DefaultMealQuantity,
   Holiday,
   MealType,
+  MealSupplyType,
   MonthlyAdjustment
 } from "@/lib/types";
 
@@ -40,6 +41,19 @@ const CLIENT_SETTINGS_DATE = "1900-01-01";
 const MONTHLY_ADJUSTMENT_PREFIX = "__BAPSIM_MONTHLY_ADJUSTMENT__:";
 
 export type WeeklyQuantities = Record<string, Record<number, number>>;
+
+export const MEAL_SUPPLY_TYPE_LABELS: Record<MealSupplyType, string> = {
+  regular: "일반 식수",
+  lunchbox: "개인도시락"
+};
+
+export function getClientMealSupplyType(client: Pick<Client, "mealSupplyType"> | undefined) {
+  return client?.mealSupplyType ?? "regular";
+}
+
+export function mealSupplyTypeLabel(type: MealSupplyType | undefined) {
+  return MEAL_SUPPLY_TYPE_LABELS[type ?? "regular"];
+}
 
 export function isClientStartedOnDate(client: Pick<Client, "deliveryStartDate"> | undefined, date: string) {
   return !client?.deliveryStartDate || date >= client.deliveryStartDate;
@@ -99,6 +113,10 @@ export function normalizeAppState(state: AppState): AppState {
 
   return {
     ...state,
+    clients: (state.clients ?? []).map((client) => ({
+      ...client,
+      mealSupplyType: client.mealSupplyType ?? "regular"
+    })),
     mealTypes,
     defaultQuantities,
     orders: state.orders ?? [],
@@ -436,9 +454,10 @@ export function clientSettingsHolidayId(clientId: string) {
   return `99999999${clientId.slice(8)}`;
 }
 
-export function encodeClientSettingsName(client: Pick<Client, "deliveryStartDate">) {
+export function encodeClientSettingsName(client: Pick<Client, "deliveryStartDate" | "mealSupplyType">) {
   return `${CLIENT_SETTINGS_PREFIX}${JSON.stringify({
-    deliveryStartDate: client.deliveryStartDate
+    deliveryStartDate: client.deliveryStartDate,
+    mealSupplyType: getClientMealSupplyType(client)
   })}`;
 }
 
@@ -454,14 +473,18 @@ export function decodeClientSettingsName(name: string) {
   try {
     const parsed = JSON.parse(name.slice(CLIENT_SETTINGS_PREFIX.length)) as {
       deliveryStartDate?: string;
+      mealSupplyType?: MealSupplyType;
     };
-    return parsed;
+    return {
+      deliveryStartDate: parsed.deliveryStartDate,
+      mealSupplyType: parsed.mealSupplyType === "lunchbox" ? "lunchbox" : "regular"
+    };
   } catch {
     return {};
   }
 }
 
-export function buildClientSettingsHolidayRow(client: Pick<Client, "id" | "deliveryStartDate">) {
+export function buildClientSettingsHolidayRow(client: Pick<Client, "id" | "deliveryStartDate" | "mealSupplyType">) {
   return {
     id: clientSettingsHolidayId(client.id),
     holiday_date: CLIENT_SETTINGS_DATE,

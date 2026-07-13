@@ -231,6 +231,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       inviteCode: row.invite_code,
       invitePin: row.invite_pin,
       deliveryStartDate: clientSettings[row.id]?.deliveryStartDate,
+      mealSupplyType: clientSettings[row.id]?.mealSupplyType === "lunchbox" ? "lunchbox" : "regular",
       lastSeenAt: row.last_seen_at ?? undefined
     })),
     mealTypes: mealTypeRows.map((row): MealType => ({

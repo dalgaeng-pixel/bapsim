@@ -48,8 +48,11 @@ import {
   createHolidayRule,
   enabledMealTypes,
   getWeeklyQuantitiesForClient,
+  getClientMealSupplyType,
   getMonthlySettlementForClient,
   isClientStartedOnDate,
+  mealSupplyTypeLabel,
+  MEAL_SUPPLY_TYPE_LABELS,
   makeRuleStorageDate,
   WEEKDAYS,
   type WeeklyQuantities
@@ -98,12 +101,13 @@ function StatCard({
 }: {
   label: string;
   value: string | number;
-  tone: "red" | "gold" | "green" | "stone";
+  tone: "red" | "gold" | "green" | "blue" | "stone";
 }) {
   const toneClass = {
     red: "border-red-100 bg-red-50 text-bapsim-red",
     gold: "border-amber-100 bg-amber-50 text-amber-800",
     green: "border-emerald-100 bg-emerald-50 text-emerald-800",
+    blue: "border-sky-100 bg-sky-50 text-sky-800",
     stone: "border-stone-200 bg-white text-stone-900"
   }[tone];
 
@@ -179,17 +183,25 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       );
     }
   );
-  const totals = {
-    finalQuantity: visibleOrders
-      .filter((order) => isClientStartedOnDate(store.getClient(order.clientId), order.date))
-      .filter((order) => order.status !== "holiday")
-      .reduce((sum, order) => sum + order.finalQuantity, 0),
-    rejectedCount: visibleOrders.filter(
-      (order) =>
-        isClientStartedOnDate(store.getClient(order.clientId), order.date) &&
-        (order.status === "rejected" || order.status === "holiday")
-    ).length
-  };
+  const totals = visibleOrders.reduce(
+    (result, order) => {
+      if (order.status === "rejected" || order.status === "holiday") {
+        result.rejectedCount += 1;
+      }
+
+      if (order.status !== "holiday") {
+        const supplyType = getClientMealSupplyType(store.getClient(order.clientId));
+        if (supplyType === "lunchbox") {
+          result.lunchboxQuantity += order.finalQuantity;
+        } else {
+          result.regularQuantity += order.finalQuantity;
+        }
+      }
+
+      return result;
+    },
+    { regularQuantity: 0, lunchboxQuantity: 0, rejectedCount: 0 }
+  );
 
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
   const reviewOrders = state.orders.filter(
@@ -368,8 +380,9 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="선택일 총 식수" value={`${totals.finalQuantity}개`} tone="red" />
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="일반 식수" value={`${totals.regularQuantity}개`} tone="red" />
+            <StatCard label="개인도시락" value={`${totals.lunchboxQuantity}개`} tone="blue" />
             <StatCard label="승인 대기" value={store.pendingRequestCount} tone="gold" />
             <StatCard label="중요 확인" value={reviewOrders.length} tone="stone" />
             <StatCard label="안먹음/거절" value={totals.rejectedCount} tone="green" />
@@ -542,6 +555,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">순서</th>
                       <th>업체</th>
+                      <th>유형</th>
                       <th>수량</th>
                       <th>주소</th>
                       <th className="hidden md:table-cell">배달 메모</th>
@@ -555,6 +569,11 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                         <tr key={order.id} className="border-b border-stone-100">
                           <td className="py-3 font-black">{index + 1}</td>
                           <td className="font-bold">{client?.name}</td>
+                          <td>
+                            <span className="inline-flex rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-700">
+                              {mealSupplyTypeLabel(client?.mealSupplyType)}
+                            </span>
+                          </td>
                           <td className="text-lg font-black text-bapsim-red">{order.finalQuantity}개</td>
                           <td>
                             <a
@@ -641,6 +660,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">업체</th>
+                      <th>유형</th>
                       <th className="hidden md:table-cell">납품 시작</th>
                       <th className="hidden sm:table-cell">기본</th>
                       <th className="hidden sm:table-cell">자동 최종</th>
@@ -737,6 +757,7 @@ function OrderTable({
         <thead>
           <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
             <th className="py-3">업체</th>
+            <th>유형</th>
             <th>기본</th>
             <th>최종</th>
             <th>상태</th>
@@ -753,6 +774,11 @@ function OrderTable({
                 <td className="py-3">
                   <p className="font-black">{client?.name}</p>
                   <p className="text-xs font-semibold text-stone-500">{client?.managerName}</p>
+                </td>
+                <td>
+                  <span className="inline-flex rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-700">
+                    {mealSupplyTypeLabel(client?.mealSupplyType)}
+                  </span>
                 </td>
                 <td>{order.baseQuantity}개</td>
                 <td className="text-lg font-black text-bapsim-red">{order.finalQuantity}개</td>
@@ -829,6 +855,11 @@ function MonthlySettlementRow({
           </p>
         ) : null}
       </td>
+      <td className="py-3">
+        <span className="inline-flex rounded-full bg-stone-100 px-2.5 py-1 text-xs font-black text-stone-700">
+          {mealSupplyTypeLabel(client.mealSupplyType)}
+        </span>
+      </td>
       <td className="hidden md:table-cell py-3">
         {client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}
       </td>
@@ -895,6 +926,7 @@ type ClientFormState = Pick<
   | "managerPhone"
   | "deliveryMemo"
   | "deliveryStartDate"
+  | "mealSupplyType"
 > & {
   weeklyQuantities: WeeklyQuantities;
   exceptionRules: Holiday[];
@@ -908,6 +940,7 @@ const emptyClientForm: ClientFormState = {
   managerPhone: "",
   deliveryMemo: "",
   deliveryStartDate: todayKey(),
+  mealSupplyType: "regular",
   weeklyQuantities: {},
   exceptionRules: []
 };
@@ -955,6 +988,7 @@ function ClientManager({
     setForm({
       ...emptyClientForm,
       deliveryStartDate: todayKey(),
+      mealSupplyType: "regular",
       weeklyQuantities: createBlankWeeklyQuantities(),
       exceptionRules: []
     });
@@ -972,6 +1006,7 @@ function ClientManager({
       managerPhone: client.managerPhone,
       deliveryMemo: client.deliveryMemo,
       deliveryStartDate: client.deliveryStartDate ?? todayKey(),
+      mealSupplyType: client.mealSupplyType ?? "regular",
       weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
       exceptionRules: store.state.holidays.filter(
         (holiday) => holiday.clientId === client.id && holiday.ruleType
@@ -1041,6 +1076,23 @@ function ClientManager({
               value={form.deliveryStartDate ?? todayKey()}
               onChange={(value) => setForm((current) => ({ ...current, deliveryStartDate: value }))}
             />
+            <label className="block">
+              <span className="text-sm font-black text-stone-700">식수 유형</span>
+              <select
+                className="focus-ring mt-2 w-full rounded-md border border-stone-300 bg-white px-3 py-3"
+                value={form.mealSupplyType}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    mealSupplyType: event.target.value as Client["mealSupplyType"]
+                  }))
+                }
+              >
+                {Object.entries(MEAL_SUPPLY_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
             <Field
               label="주소"
               value={form.address}
@@ -1136,6 +1188,7 @@ function ClientManager({
             <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
               <Info label="초대 코드" value={client.inviteCode} />
               <Info label="PIN" value={client.invitePin} />
+              <Info label="식수 유형" value={mealSupplyTypeLabel(client.mealSupplyType)} />
               <Info
                 label="납품 시작일"
                 value={client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}

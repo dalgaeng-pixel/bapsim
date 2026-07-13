@@ -26,6 +26,7 @@ This file is the first stop for the next agent or developer continuing the proje
 - **Weekly Meal Scheduling**: The app now supports client-specific weekday default quantities by meal type, starting with lunch and dinner. Admins edit the `Mon-Sun x lunch/dinner` grid in each client form. Customers can only change date-specific orders, not the admin default table.
 - **Date & Meal Selection**: The admin dashboard has `today / tomorrow / date input` and meal-type selectors. Customer pages show today/tomorrow cards plus a two-week weekly setting table.
 - **Simple No-Meal Rules**: Monthly last-day, monthly day, and one-off date no-meal rules are stored through the existing `holidays` table using an encoded JSON payload in `name`. This avoids an immediate Supabase table migration while preserving structured parsing in `lib/schedule.ts`.
+- **Meal Supply Type**: Each client has a `mealSupplyType` of `regular` or `lunchbox`. Admin overview totals, delivery CSV, monthly settlement rows, and client/admin profile displays split or label regular meal counts vs personal lunchboxes. The value is persisted in the same encoded internal client settings row in `holidays`.
 - **Delivery Start Date**: Each client has a `deliveryStartDate`. Admins can enter meal defaults before actual service starts, but delivery tables and monthly settlement include orders only on/after that start date. The value is persisted as an encoded internal settings row in `holidays`, avoiding an immediate `clients` table migration.
 - **Editable Monthly Settlement**: The monthly tab now has a month selector and editable settlement final quantity per client. Default meal quantities are included automatically up to the current date and per-meal cutoff; original daily orders stay unchanged; manual settlement overrides are stored as `monthlyAdjustments` and persisted as encoded internal rows in `holidays`.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
@@ -85,7 +86,7 @@ Expected current result:
 
 The app state currently contains:
 
-- `clients`: customer companies, addresses, manager contact, delivery order, invite code/PIN, delivery start date.
+- `clients`: customer companies, addresses, manager contact, delivery order, invite code/PIN, delivery start date, meal supply type.
 - `mealTypes`: meal categories, currently lunch and dinner.
 - `defaultQuantities`: weekday and meal-type default quantities.
 - `orders`: date-specific meal quantities and statuses.

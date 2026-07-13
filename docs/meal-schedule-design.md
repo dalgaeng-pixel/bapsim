@@ -13,6 +13,7 @@ Last updated: 2026-07-09 KST
 - Simple no-meal rules cover monthly last day, monthly fixed day, and one specific date.
 - A client can be configured before actual service starts, but settlement starts only from `deliveryStartDate`.
 - Admins can manually correct monthly settlement totals without changing the original daily order history.
+- Clients are categorized as regular meal count or personal lunchbox for separate operational totals.
 
 ## Decisions
 
@@ -21,6 +22,7 @@ Last updated: 2026-07-09 KST
 - **Meal types stay extensible**: lunch and dinner are seeded defaults, but the existing `meal_types` table still allows future meal categories.
 - **No immediate new Supabase table**: simple no-meal rules are stored in the existing `holidays` table with encoded JSON in `name`, decoded/encoded only through `lib/schedule.ts`. This reduces migration risk for the current deployed app.
 - **Shared calculation layer**: both admin and client UI use `lib/schedule.ts` to prevent mismatches between displayed defaults, generated orders, and exception rules.
+- **Meal supply type splits totals**: client-level `mealSupplyType` keeps ordinary meal counts and personal lunchboxes separate in admin totals and exports.
 - **Delivery start controls settlement**: entered defaults and prepared orders can exist before service starts, but delivery tables and monthly settlement filter out dates before each client's `deliveryStartDate`.
 - **Settlement overrides do not mutate orders**: monthly corrections are stored separately as `monthlyAdjustments`, so order history remains auditable.
 

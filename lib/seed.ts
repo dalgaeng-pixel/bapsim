@@ -55,6 +55,7 @@ export function createInitialState(): AppState {
       inviteCode: "DAEHAN-01",
       invitePin: "1234",
       deliveryStartDate: date,
+      mealSupplyType: "regular",
       lastSeenAt: nowIso()
     },
     {
@@ -70,6 +71,7 @@ export function createInitialState(): AppState {
       inviteCode: "SEOHAE-02",
       invitePin: "4821",
       deliveryStartDate: date,
+      mealSupplyType: "regular",
       lastSeenAt: nowIso()
     },
     {
@@ -85,6 +87,7 @@ export function createInitialState(): AppState {
       inviteCode: "HANBIT-03",
       invitePin: "9130",
       deliveryStartDate: date,
+      mealSupplyType: "regular",
       lastSeenAt: nowIso()
     },
     {
@@ -100,6 +103,7 @@ export function createInitialState(): AppState {
       inviteCode: "SINSUNG-04",
       invitePin: "7782",
       deliveryStartDate: date,
+      mealSupplyType: "regular",
       lastSeenAt: nowIso()
     },
     {
@@ -115,6 +119,7 @@ export function createInitialState(): AppState {
       inviteCode: "JATECH-05",
       invitePin: "6650",
       deliveryStartDate: date,
+      mealSupplyType: "regular",
       lastSeenAt: nowIso()
     }
   ];

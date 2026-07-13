@@ -838,6 +838,7 @@ export function useBapsimStore(initialState?: AppState) {
         | "managerPhone"
         | "deliveryMemo"
         | "deliveryStartDate"
+        | "mealSupplyType"
       > & { weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
       adminName: string
     ) => {
@@ -865,6 +866,7 @@ export function useBapsimStore(initialState?: AppState) {
           inviteCode,
           invitePin: createPin(),
           deliveryStartDate: input.deliveryStartDate || date,
+          mealSupplyType: input.mealSupplyType ?? "regular",
           lastSeenAt: undefined
         };
 
@@ -927,6 +929,7 @@ export function useBapsimStore(initialState?: AppState) {
           | "managerPhone"
           | "deliveryMemo"
           | "deliveryStartDate"
+          | "mealSupplyType"
         >
       > & { weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },
       adminName: string

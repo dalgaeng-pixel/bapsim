@@ -1,4 +1,5 @@
 export type ClientStatus = "active" | "paused";
+export type MealSupplyType = "regular" | "lunchbox";
 export type OrderStatus = "normal" | "changed" | "rejected" | "pending" | "holiday";
 export type RequestStatus = "pending" | "approved" | "rejected";
 export type RequestType =
@@ -35,6 +36,7 @@ export interface Client {
   inviteCode: string;
   invitePin: string;
   deliveryStartDate?: string;
+  mealSupplyType: MealSupplyType;
   lastSeenAt?: string;
 }
 

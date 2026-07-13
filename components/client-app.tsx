@@ -22,6 +22,7 @@ import {
   enabledMealTypes,
   getClientPlanningDates,
   getTomorrowKey,
+  mealSupplyTypeLabel,
   WEEKDAYS
 } from "@/lib/schedule";
 import type { AppState, DailyMealOrder } from "@/lib/types";
@@ -497,6 +498,7 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
                 <Info label="업체명" value={client.name} />
                 <Info label="주소" value={`${client.address} ${client.addressDetail}`} />
                 <Info label="담당자" value={`${client.managerName} · ${client.managerPhone}`} />
+                <Info label="식수 유형" value={mealSupplyTypeLabel(client.mealSupplyType)} />
                 <Info
                   label="납품 시작일"
                   value={client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}
