@@ -1,4 +1,4 @@
-import { todayKey } from "@/lib/date";
+import { isPastCutoffForDate, todayKey } from "@/lib/date";
 import type {
   AppState,
   Client,
@@ -293,8 +293,30 @@ export function getBillableOrdersForClient(state: AppState, clientId: string) {
   );
 }
 
+export function getSettlementDatesForMonth(month: string, now = new Date()) {
+  const currentMonth = todayKey(now).slice(0, 7);
+
+  if (month > currentMonth) {
+    return [];
+  }
+
+  const lastDate = month === currentMonth
+    ? todayKey(now)
+    : `${month}-${String(getLastDayOfMonth(`${month}-01`)).padStart(2, "0")}`;
+
+  return getDateRange(`${month}-01`, Number(lastDate.slice(-2)));
+}
+
 export function getBillableOrdersForClientMonth(state: AppState, clientId: string, month: string) {
-  return getBillableOrdersForClient(state, clientId).filter((order) => order.date.startsWith(month));
+  const client = state.clients.find((item) => item.id === clientId);
+
+  return getSettlementDatesForMonth(month)
+    .flatMap((date) =>
+      enabledMealTypes(state)
+        .filter((mealType) => isPastCutoffForDate(date, mealType.cutoffTime))
+        .map((mealType) => getOrderForSlot(state, clientId, mealType.id, date))
+    )
+    .filter((order) => isClientStartedOnDate(client, order.date));
 }
 
 export function getMonthlyAdjustment(state: AppState, clientId: string, month: string) {

@@ -615,7 +615,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                 <div>
                   <h2 className="text-xl font-black">월별 집계</h2>
                   <p className="text-sm font-semibold text-stone-500">
-                    납품 시작일 이후 주문만 포함하고, 정산 최종 수량은 별도로 수정할 수 있습니다.
+                    기본 식수와 변경/거절을 자동 계산하고, 정산 최종 수량은 별도로 수정할 수 있습니다.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

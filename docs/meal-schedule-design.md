@@ -31,7 +31,7 @@ Last updated: 2026-07-09 KST
 - Customer pages include today/tomorrow quick cards and a two-week weekly settings table.
 - Saving a customer weekly change creates or updates the related `daily_meal_orders` row. If a slot is already past cutoff, it creates an approval request instead.
 - Delivery start date is exposed on the client object in TypeScript but persisted through an encoded internal row in `holidays`, because the current deployed Supabase schema does not require a `clients.delivery_start_date` migration.
-- Monthly settlement is selected by `YYYY-MM`. Each client row shows computed base/final totals, editable settlement final quantity, and memo. Overrides are persisted through encoded internal `holidays` rows until a dedicated table is introduced.
+- Monthly settlement is selected by `YYYY-MM`. Each client row shows computed base/final totals, editable settlement final quantity, and memo. Computed totals include virtual default orders through the current date and only include today meal slots after each meal cutoff. Overrides are persisted through encoded internal `holidays` rows until a dedicated table is introduced.
 
 ## Future Migration Option
 
