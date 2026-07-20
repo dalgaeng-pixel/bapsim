@@ -50,6 +50,10 @@ console.log(`🔑 Service Role Key: ${serviceKey.slice(0, 15)}...`);
 
 const tables = [
   "clients",
+  "settlement_accounts",
+  "contact_access_groups",
+  "contact_access_group_members",
+  "monthly_settlement_adjustments",
   "meal_types",
   "default_meal_quantities",
   "daily_meal_orders",

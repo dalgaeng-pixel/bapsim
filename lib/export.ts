@@ -1,6 +1,6 @@
 import type { AppState, DailyMealOrder } from "@/lib/types";
 import { todayKey } from "@/lib/date";
-import { getMonthlySettlementForClient, mealSupplyTypeLabel } from "@/lib/schedule";
+import { getMonthlySettlementForSettlementAccount, mealSupplyTypeLabel } from "@/lib/schedule";
 
 function csvEscape(value: string | number | undefined) {
   const text = String(value ?? "");
@@ -41,17 +41,27 @@ export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
 
 export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)) {
   return [
-    ["월", "업체명", "유형", "납품 시작일", "기본 수량 합계", "자동 최종", "정산 최종", "거절 건수", "변경 건수", "정산 메모"],
-    ...state.clients.map((client) => {
-      const settlement = getMonthlySettlementForClient(state, client.id, month);
+    ["월", "정산 업체", "배송 장소", "기본 수량 합계", "자동 최종", "정산 최종", "일반 식수", "개인도시락", "거절 건수", "변경 건수", "정산 메모"],
+    ...state.settlementAccounts.map((account) => {
+      const settlement = getMonthlySettlementForSettlementAccount(state, account.id, month);
+      const regularQuantity = settlement.clientSettlements.reduce(
+        (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "regular" ? item.settlementFinalQuantity : 0),
+        0
+      );
+      const lunchboxQuantity = settlement.clientSettlements.reduce(
+        (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "lunchbox" ? item.settlementFinalQuantity : 0),
+        0
+      );
+
       return [
         month,
-        client.name,
-        mealSupplyTypeLabel(client.mealSupplyType),
-        client.deliveryStartDate ?? "즉시",
+        account.name,
+        settlement.clients.map((client) => client.name).join(" · "),
         settlement.computedBaseQuantity,
         settlement.computedFinalQuantity,
         settlement.settlementFinalQuantity,
+        regularQuantity,
+        lunchboxQuantity,
         settlement.rejectedCount,
         settlement.changedCount,
         settlement.adjustment?.memo

@@ -175,6 +175,26 @@ export function createInitialState(): AppState {
 
   return {
     clients,
+    settlementAccounts: clients.map((client) => ({
+      id: client.id,
+      name: client.name,
+      status: client.status === "active" ? "active" : "paused" as const
+    })),
+    contactAccessGroups: clients.map((client) => ({
+      id: client.id,
+      name: `${client.name} 담당자`,
+      managerName: client.managerName,
+      managerPhone: client.managerPhone,
+      inviteCode: client.inviteCode,
+      invitePin: client.invitePin,
+      status: client.status === "active" ? "active" : "paused" as const
+    })),
+    contactAccessGroupMembers: clients.map((client) => ({
+      id: `legacy-member-${client.id}`,
+      contactAccessGroupId: client.id,
+      clientId: client.id
+    })),
+    groupStorageReady: true,
     mealTypes,
     defaultQuantities,
     orders,

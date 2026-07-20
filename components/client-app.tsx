@@ -25,7 +25,7 @@ import {
   mealSupplyTypeLabel,
   WEEKDAYS
 } from "@/lib/schedule";
-import type { AppState, DailyMealOrder } from "@/lib/types";
+import type { AppState, ContactAccessGroup, DailyMealOrder } from "@/lib/types";
 
 type ClientTab = "today" | "week" | "history" | "profile" | "alerts";
 
@@ -38,15 +38,16 @@ const clientTabs = [
 ] as const;
 
 function slotKey(order: DailyMealOrder) {
-  return `${order.date}:${order.mealTypeId}`;
+  return `${order.clientId}:${order.date}:${order.mealTypeId}`;
 }
 
-export function ClientApp({ initialState }: { initialState?: AppState }) {
-  const store = useBapsimStore(initialState);
+export function ClientApp({ initialState, contactAccessGroup: initialContactAccessGroup }: { initialState?: AppState; contactAccessGroup?: ContactAccessGroup }) {
+  const store = useBapsimStore(initialState, initialContactAccessGroup ? { inviteCode: initialContactAccessGroup.inviteCode, invitePin: initialContactAccessGroup.invitePin } : undefined);
   const [pin, setPin] = useState("");
   const [loggedIn, setLoggedIn] = useState(false);
   const [pinError, setPinError] = useState("");
   const [tab, setTab] = useState<ClientTab>("today");
+  const [selectedClientId, setSelectedClientId] = useState("");
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, number>>({});
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
   const [infoMode, setInfoMode] = useState<"address" | "contact">("address");
@@ -56,7 +57,8 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   const [managerPhone, setManagerPhone] = useState("");
   const { deferredPrompt, promptInstall, isIOS, isInstalled } = usePWAInstall();
 
-  const client = store.state.clients[0];
+  const contactAccessGroup = initialContactAccessGroup ?? store.state.contactAccessGroups[0];
+  const client = store.state.clients.find((item) => item.id === selectedClientId) ?? store.state.clients[0];
   const today = todayKey();
   const tomorrow = getTomorrowKey(today);
   const planningDates = useMemo(() => getClientPlanningDates(today), [today]);
@@ -76,17 +78,23 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
   );
 
   useEffect(() => {
-    if (client) {
+    if (!selectedClientId && client) {
+      setSelectedClientId(client.id);
+    }
+  }, [client, selectedClientId]);
+
+  useEffect(() => {
+    if (contactAccessGroup) {
       try {
-        const savedPin = localStorage.getItem(`bapsim_client_auth_${client.id}`);
-        if (savedPin === client.invitePin) {
+        const savedPin = localStorage.getItem(`bapsim_client_auth_${contactAccessGroup.id}`);
+        if (savedPin === contactAccessGroup.invitePin) {
           setLoggedIn(true);
         }
       } catch {
         // Ignore localStorage errors
       }
     }
-  }, [client]);
+  }, [contactAccessGroup]);
 
   useEffect(() => {
     const userAgent = navigator.userAgent.toLowerCase();
@@ -219,9 +227,9 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
           <div className="rounded-lg border border-stone-200 bg-white p-6 shadow-soft">
             <Logo />
             <div className="mt-8 rounded-lg bg-bapsim-rice p-4">
-              <p className="text-sm font-bold text-stone-600">초대 거래처</p>
-              <p className="mt-1 text-2xl font-black">{client.name}</p>
-              <p className="mt-2 text-sm font-semibold text-stone-600">{client.address}</p>
+              <p className="text-sm font-bold text-stone-600">담당자 접속</p>
+              <p className="mt-1 text-2xl font-black">{contactAccessGroup?.name ?? client.name}</p>
+              <p className="mt-2 text-sm font-semibold text-stone-600">{store.state.clients.length}개 배송 장소</p>
             </div>
             <label className="mt-6 block">
               <span className="text-sm font-bold text-stone-700">4자리 PIN</span>
@@ -240,10 +248,10 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
             <button
               className="focus-ring mt-5 flex w-full items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-4 font-black text-white"
               onClick={() => {
-                if (pin === client.invitePin) {
+                if (pin === (contactAccessGroup?.invitePin ?? client.invitePin)) {
                   setLoggedIn(true);
                   try {
-                    localStorage.setItem(`bapsim_client_auth_${client.id}`, client.invitePin);
+                    localStorage.setItem(`bapsim_client_auth_${contactAccessGroup?.id ?? client.id}`, contactAccessGroup?.invitePin ?? client.invitePin);
                   } catch {
                     // Ignore localStorage errors
                   }
@@ -281,6 +289,20 @@ export function ClientApp({ initialState }: { initialState?: AppState }) {
       </header>
 
       <section className="mx-auto max-w-3xl px-4 py-5">
+        {store.state.clients.length > 1 ? (
+          <label className="mb-4 block rounded-lg border border-stone-200 bg-white p-4 shadow-soft">
+            <span className="text-sm font-black text-stone-700">배송 장소 선택</span>
+            <select
+              className="focus-ring mt-2 w-full rounded-md border border-stone-300 bg-white px-3 py-3 font-black"
+              value={client.id}
+              onChange={(event) => setSelectedClientId(event.target.value)}
+            >
+              {store.state.clients.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {tab === "today" ? (
           <div className="space-y-4">
             <ClientHeaderCard clientName={client.name} address={client.address} />

@@ -1,5 +1,7 @@
 export type ClientStatus = "active" | "paused";
 export type MealSupplyType = "regular" | "lunchbox";
+export type SettlementAccountStatus = "active" | "paused";
+export type ContactAccessGroupStatus = "active" | "paused";
 export type OrderStatus = "normal" | "changed" | "rejected" | "pending" | "holiday";
 export type RequestStatus = "pending" | "approved" | "rejected";
 export type RequestType =
@@ -21,7 +23,36 @@ export type AuditAction =
   | "reset_pin"
   | "change_delivery_order"
   | "update_monthly_adjustment"
-  | "delete_client";
+  | "delete_client"
+  | "create_settlement_account"
+  | "update_settlement_account"
+  | "delete_settlement_account"
+  | "create_contact_access_group"
+  | "update_contact_access_group"
+  | "reset_contact_access_group_pin"
+  | "delete_contact_access_group";
+
+export interface SettlementAccount {
+  id: string;
+  name: string;
+  status: SettlementAccountStatus;
+}
+
+export interface ContactAccessGroup {
+  id: string;
+  name: string;
+  managerName: string;
+  managerPhone: string;
+  inviteCode: string;
+  invitePin: string;
+  status: ContactAccessGroupStatus;
+}
+
+export interface ContactAccessGroupMember {
+  id: string;
+  contactAccessGroupId: string;
+  clientId: string;
+}
 
 export interface Client {
   id: string;
@@ -35,6 +66,7 @@ export interface Client {
   status: ClientStatus;
   inviteCode: string;
   invitePin: string;
+  settlementAccountId?: string;
   deliveryStartDate?: string;
   mealSupplyType: MealSupplyType;
   lastSeenAt?: string;
@@ -121,7 +153,8 @@ export interface Holiday {
 export interface MonthlyAdjustment {
   id: string;
   month: string;
-  clientId: string;
+  clientId?: string;
+  settlementAccountId?: string;
   finalQuantity: number;
   memo?: string;
   updatedAt: string;
@@ -148,6 +181,10 @@ export interface AdminAuditLog {
 
 export interface AppState {
   clients: Client[];
+  settlementAccounts: SettlementAccount[];
+  contactAccessGroups: ContactAccessGroup[];
+  contactAccessGroupMembers: ContactAccessGroupMember[];
+  groupStorageReady: boolean;
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
   orders: DailyMealOrder[];

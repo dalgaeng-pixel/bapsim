@@ -10,6 +10,7 @@ import {
   enabledMealTypes,
   getBaseQuantity,
   getMonthlySettlementForClient,
+  getMonthlySettlementForSettlementAccount,
   getOrderForSlot,
   getOrdersForDate,
   normalizeAppState,
@@ -21,6 +22,9 @@ import type {
   AppState,
   ChangeRequest,
   Client,
+  ContactAccessGroup,
+  ContactAccessGroupMember,
+  SettlementAccount,
   DailyMealOrder,
   OrderChangeLog,
   Holiday
@@ -55,13 +59,22 @@ function writeState(state: AppState) {
 }
 
 import { syncAppStateDiffAction } from "@/app/actions/state";
+import { syncContactAccessGroupDiffAction } from "@/app/actions/contact-state";
 import type { AppStateArrayKey, AppStateDiff } from "@/lib/supabase-state";
+
+type ContactSyncCredentials = {
+  inviteCode: string;
+  invitePin: string;
+};
 
 function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   const diff: AppStateDiff = {};
 
   const arrayKeys: AppStateArrayKey[] = [
     "clients",
+    "settlementAccounts",
+    "contactAccessGroups",
+    "contactAccessGroupMembers",
     "mealTypes",
     "defaultQuantities",
     "orders",
@@ -96,6 +109,8 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
     }
   }
 
+  diff.groupStorageReady = next.groupStorageReady;
+
   // Handle deliveryOverrides (Record<string, string[]>)
   const overridesDiff: Record<string, string[]> = {};
   let hasOverridesDiff = false;
@@ -129,11 +144,12 @@ function createPin() {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
 
-export function useBapsimStore(initialState?: AppState) {
+export function useBapsimStore(initialState?: AppState, contactSyncCredentials?: ContactSyncCredentials) {
   const [state, setState] = useState<AppState>(() => normalizeAppState(initialState ?? createInitialState()));
   const [loaded, setLoaded] = useState(!!initialState);
   const [storageMode, setStorageMode] = useState<StorageMode>(initialState ? "supabase" : "local");
   const remoteEnabledRef = useRef(!!initialState);
+  const contactSyncRef = useRef(contactSyncCredentials);
 
   useEffect(() => {
     if (initialState) {
@@ -166,7 +182,12 @@ export function useBapsimStore(initialState?: AppState) {
       if (remoteEnabledRef.current) {
         const diff = calculateDiff(previous, next);
         if (Object.keys(diff).length > 0) {
-          void syncAppStateDiffAction(diff);
+          const credentials = contactSyncRef.current;
+          if (credentials) {
+            void syncContactAccessGroupDiffAction(credentials.inviteCode, credentials.invitePin, diff);
+          } else {
+            void syncAppStateDiffAction(diff);
+          }
         }
       }
       return next;
@@ -807,6 +828,326 @@ export function useBapsimStore(initialState?: AppState) {
     [commit]
   );
 
+  const updateSettlementMonthlyAdjustment = useCallback(
+    (settlementAccountId: string, month: string, finalQuantity: number, memo: string, adminName: string) => {
+      commit((previous) => {
+        const account = previous.settlementAccounts.find((item) => item.id === settlementAccountId);
+        if (!account) {
+          return previous;
+        }
+
+        const settlement = getMonthlySettlementForSettlementAccount(previous, settlementAccountId, month);
+        const existing = settlement.adjustment;
+        const normalizedFinalQuantity = Math.max(0, Math.floor(Number(finalQuantity) || 0));
+        const normalizedMemo = memo.trim();
+        const shouldRemove =
+          normalizedFinalQuantity === settlement.locationAdjustedFinalQuantity && normalizedMemo.length === 0;
+        const monthlyAdjustments = shouldRemove
+          ? previous.monthlyAdjustments.filter((item) => item.id !== existing?.id)
+          : existing
+            ? previous.monthlyAdjustments.map((item) =>
+                item.id === existing.id
+                  ? {
+                      ...item,
+                      finalQuantity: normalizedFinalQuantity,
+                      memo: normalizedMemo || undefined,
+                      updatedAt: new Date().toISOString()
+                    }
+                  : item
+              )
+            : [
+                ...previous.monthlyAdjustments,
+                {
+                  id: id("settlement-adjustment"),
+                  month,
+                  settlementAccountId,
+                  finalQuantity: normalizedFinalQuantity,
+                  memo: normalizedMemo || undefined,
+                  updatedAt: new Date().toISOString()
+                }
+              ];
+
+        return {
+          ...previous,
+          monthlyAdjustments,
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_monthly_adjustment",
+              adminName,
+              targetLabel: account.name,
+              detail: `${month} 월별 집계 정산 수량 수정`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const createSettlementAccount = useCallback(
+    (name: string, adminName: string) => {
+      const normalizedName = name.trim();
+      if (!normalizedName) {
+        return;
+      }
+
+      commit((previous) => {
+        const account: SettlementAccount = { id: id("settlement-account"), name: normalizedName, status: "active" };
+        return {
+          ...previous,
+          settlementAccounts: [...previous.settlementAccounts, account],
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "create_settlement_account",
+              adminName,
+              targetLabel: account.name,
+              detail: "정산 업체 등록",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const updateSettlementAccount = useCallback(
+    (accountId: string, updates: Pick<SettlementAccount, "name" | "status">, adminName: string) => {
+      commit((previous) => {
+        const account = previous.settlementAccounts.find((item) => item.id === accountId);
+        if (!account) {
+          return previous;
+        }
+
+        const nextAccount = { ...account, ...updates, name: updates.name.trim() || account.name };
+        return {
+          ...previous,
+          settlementAccounts: previous.settlementAccounts.map((item) =>
+            item.id === accountId ? nextAccount : item
+          ),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_settlement_account",
+              adminName,
+              targetLabel: nextAccount.name,
+              detail: "정산 업체 정보 수정",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteSettlementAccount = useCallback(
+    (accountId: string, adminName: string) => {
+      commit((previous) => {
+        const account = previous.settlementAccounts.find((item) => item.id === accountId);
+        if (!account || previous.clients.some((client) => client.settlementAccountId === accountId)) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          settlementAccounts: previous.settlementAccounts.filter((item) => item.id !== accountId),
+          monthlyAdjustments: previous.monthlyAdjustments.filter(
+            (adjustment) => adjustment.settlementAccountId !== accountId
+          ),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "delete_settlement_account",
+              adminName,
+              targetLabel: account.name,
+              detail: "정산 업체 삭제",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const createContactAccessGroup = useCallback(
+    (
+      input: Pick<ContactAccessGroup, "name" | "managerName" | "managerPhone"> & { clientIds: string[] },
+      adminName: string
+    ) => {
+      const name = input.name.trim();
+      if (!name || input.clientIds.length === 0) {
+        return;
+      }
+
+      commit((previous) => {
+        const group: ContactAccessGroup = {
+          id: id("contact-group"),
+          name,
+          managerName: input.managerName.trim(),
+          managerPhone: input.managerPhone.trim(),
+          inviteCode: `GROUP-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+          invitePin: createPin(),
+          status: "active"
+        };
+        const validClientIds = [...new Set(input.clientIds)].filter((clientId) =>
+          previous.clients.some((client) => client.id === clientId)
+        );
+        const members: ContactAccessGroupMember[] = validClientIds.map((clientId) => ({
+          id: id("contact-group-member"),
+          contactAccessGroupId: group.id,
+          clientId
+        }));
+
+        return {
+          ...previous,
+          contactAccessGroups: [...previous.contactAccessGroups, group],
+          contactAccessGroupMembers: [
+            ...previous.contactAccessGroupMembers.filter((member) => !validClientIds.includes(member.clientId)),
+            ...members
+          ],
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "create_contact_access_group",
+              adminName,
+              targetLabel: group.name,
+              detail: `${members.length}개 배송 장소 담당자 접속 그룹 등록`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const updateContactAccessGroup = useCallback(
+    (
+      groupId: string,
+      input: Pick<ContactAccessGroup, "name" | "managerName" | "managerPhone" | "status"> & { clientIds: string[] },
+      adminName: string
+    ) => {
+      commit((previous) => {
+        const group = previous.contactAccessGroups.find((item) => item.id === groupId);
+        if (!group || input.clientIds.length === 0) {
+          return previous;
+        }
+
+        const nextGroup: ContactAccessGroup = {
+          ...group,
+          name: input.name.trim() || group.name,
+          managerName: input.managerName.trim(),
+          managerPhone: input.managerPhone.trim(),
+          status: input.status
+        };
+        const validClientIds = [...new Set(input.clientIds)].filter((clientId) =>
+          previous.clients.some((client) => client.id === clientId)
+        );
+        const nextMembers = [
+          ...previous.contactAccessGroupMembers.filter((member) =>
+            member.contactAccessGroupId !== groupId && !validClientIds.includes(member.clientId)
+          ),
+          ...validClientIds.map((clientId) => ({
+            id: id("contact-group-member"),
+            contactAccessGroupId: groupId,
+            clientId
+          }))
+        ];
+
+        return {
+          ...previous,
+          contactAccessGroups: previous.contactAccessGroups.map((item) =>
+            item.id === groupId ? nextGroup : item
+          ),
+          contactAccessGroupMembers: nextMembers,
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_contact_access_group",
+              adminName,
+              targetLabel: nextGroup.name,
+              detail: `${validClientIds.length}개 배송 장소 담당자 접속 그룹 수정`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const resetContactAccessGroupPin = useCallback(
+    (groupId: string, adminName: string) => {
+      commit((previous) => {
+        const group = previous.contactAccessGroups.find((item) => item.id === groupId);
+        if (!group) {
+          return previous;
+        }
+
+        const invitePin = createPin();
+        return {
+          ...previous,
+          contactAccessGroups: previous.contactAccessGroups.map((item) =>
+            item.id === groupId ? { ...item, invitePin } : item
+          ),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "reset_contact_access_group_pin",
+              adminName,
+              targetLabel: group.name,
+              detail: "담당자 접속 PIN 재발급",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteContactAccessGroup = useCallback(
+    (groupId: string, adminName: string) => {
+      commit((previous) => {
+        const group = previous.contactAccessGroups.find((item) => item.id === groupId);
+        const hasMembers = previous.contactAccessGroupMembers.some(
+          (member) => member.contactAccessGroupId === groupId
+        );
+        if (!group || hasMembers) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          contactAccessGroups: previous.contactAccessGroups.filter((item) => item.id !== groupId),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "delete_contact_access_group",
+              adminName,
+              targetLabel: group.name,
+              detail: "담당자 접속 그룹 삭제",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
   const resetDemoData = useCallback(() => {
     const next = createInitialState();
     setState(next);
@@ -829,8 +1170,7 @@ export function useBapsimStore(initialState?: AppState) {
 
   const createClientRecord = useCallback(
     (
-      input: Pick<
-        Client,
+      input: Pick<Client,
         | "name"
         | "address"
         | "addressDetail"
@@ -839,7 +1179,8 @@ export function useBapsimStore(initialState?: AppState) {
         | "deliveryMemo"
         | "deliveryStartDate"
         | "mealSupplyType"
-      > & { weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
+        | "settlementAccountId"
+      > & { contactAccessGroupId?: string; weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
       adminName: string
     ) => {
       commit((previous) => {
@@ -853,6 +1194,26 @@ export function useBapsimStore(initialState?: AppState) {
           .slice(2, 6)
           .toUpperCase()}`;
 
+        const selectedSettlementAccount = previous.settlementAccounts.find(
+          (account) => account.id === input.settlementAccountId
+        );
+        const settlementAccount: SettlementAccount = selectedSettlementAccount ?? {
+          id: id("settlement-account"),
+          name: input.name,
+          status: "active"
+        };
+        const selectedContactGroup = previous.contactAccessGroups.find(
+          (group) => group.id === input.contactAccessGroupId
+        );
+        const contactAccessGroup: ContactAccessGroup = selectedContactGroup ?? {
+          id: id("contact-group"),
+          name: `${input.name} 담당자`,
+          managerName: input.managerName,
+          managerPhone: input.managerPhone,
+          inviteCode,
+          invitePin: createPin(),
+          status: "active"
+        };
         const client: Client = {
           id: clientId,
           name: input.name,
@@ -863,16 +1224,29 @@ export function useBapsimStore(initialState?: AppState) {
           deliveryMemo: input.deliveryMemo,
           deliveryOrder,
           status: "active",
-          inviteCode,
-          invitePin: createPin(),
+          inviteCode: contactAccessGroup.inviteCode,
+          invitePin: contactAccessGroup.invitePin,
+          settlementAccountId: settlementAccount.id,
           deliveryStartDate: input.deliveryStartDate || date,
           mealSupplyType: input.mealSupplyType ?? "regular",
           lastSeenAt: undefined
         };
+        const contactAccessGroupMember: ContactAccessGroupMember = {
+          id: id("contact-group-member"),
+          contactAccessGroupId: contactAccessGroup.id,
+          clientId
+        };
 
         const temporaryState = {
           ...previous,
-          clients: [...previous.clients, client]
+          clients: [...previous.clients, client],
+          settlementAccounts: selectedSettlementAccount
+            ? previous.settlementAccounts
+            : [...previous.settlementAccounts, settlementAccount],
+          contactAccessGroups: selectedContactGroup
+            ? previous.contactAccessGroups
+            : [...previous.contactAccessGroups, contactAccessGroup],
+          contactAccessGroupMembers: [...previous.contactAccessGroupMembers, contactAccessGroupMember]
         };
         const defaultQuantities = buildDefaultQuantitiesFromWeekly({
           state: temporaryState,
@@ -896,6 +1270,13 @@ export function useBapsimStore(initialState?: AppState) {
         return {
           ...previous,
           clients: [...previous.clients, client],
+          settlementAccounts: selectedSettlementAccount
+            ? previous.settlementAccounts
+            : [...previous.settlementAccounts, settlementAccount],
+          contactAccessGroups: selectedContactGroup
+            ? previous.contactAccessGroups
+            : [...previous.contactAccessGroups, contactAccessGroup],
+          contactAccessGroupMembers: [...previous.contactAccessGroupMembers, contactAccessGroupMember],
           defaultQuantities: [...previous.defaultQuantities, ...defaultQuantities],
           holidays: [...previous.holidays, ...holidays],
           orders: [...previous.orders, ...orders],
@@ -920,8 +1301,7 @@ export function useBapsimStore(initialState?: AppState) {
     (
       clientId: string,
       updates: Partial<
-        Pick<
-          Client,
+        Pick<Client,
           | "name"
           | "address"
           | "addressDetail"
@@ -930,8 +1310,9 @@ export function useBapsimStore(initialState?: AppState) {
           | "deliveryMemo"
           | "deliveryStartDate"
           | "mealSupplyType"
+          | "settlementAccountId"
         >
-      > & { weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },
+      > & { contactAccessGroupId?: string; weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },
       adminName: string
     ) => {
       commit((previous) => {
@@ -940,10 +1321,22 @@ export function useBapsimStore(initialState?: AppState) {
           return previous;
         }
 
-        const { weeklyQuantities, exceptionRules, ...clientUpdates } = updates;
+        const { weeklyQuantities, exceptionRules, contactAccessGroupId, ...clientUpdates } = updates;
         let nextDefaultQuantities = previous.defaultQuantities;
         let nextHolidays = previous.holidays;
         let nextOrders = previous.orders;
+        let nextContactAccessGroupMembers = previous.contactAccessGroupMembers;
+
+        if (contactAccessGroupId && previous.contactAccessGroups.some((group) => group.id === contactAccessGroupId)) {
+          nextContactAccessGroupMembers = [
+            ...previous.contactAccessGroupMembers.filter((member) => member.clientId !== clientId),
+            {
+              id: id("contact-group-member"),
+              contactAccessGroupId,
+              clientId
+            }
+          ];
+        }
 
         if (weeklyQuantities) {
           const replacementDefaults = buildDefaultQuantitiesFromWeekly({
@@ -1001,6 +1394,7 @@ export function useBapsimStore(initialState?: AppState) {
           defaultQuantities: nextDefaultQuantities,
           holidays: nextHolidays,
           orders: nextOrders,
+          contactAccessGroupMembers: nextContactAccessGroupMembers,
           clients: previous.clients.map((item) =>
             item.id === clientId ? { ...item, ...clientUpdates } : item
           ),
@@ -1101,6 +1495,7 @@ export function useBapsimStore(initialState?: AppState) {
         return {
           ...previous,
           clients: previous.clients.filter((item) => item.id !== clientId),
+          contactAccessGroupMembers: previous.contactAccessGroupMembers.filter((item) => item.clientId !== clientId),
           orders: previous.orders.filter((item) => item.clientId !== clientId),
           defaultQuantities: previous.defaultQuantities.filter((item) => item.clientId !== clientId),
           orderChangeLogs: previous.orderChangeLogs.filter((item) => item.clientId !== clientId),
@@ -1148,6 +1543,14 @@ export function useBapsimStore(initialState?: AppState) {
     submitInfoRequest,
     moveDeliveryOrder,
     updateMonthlyAdjustment,
+    updateSettlementMonthlyAdjustment,
+    createSettlementAccount,
+    updateSettlementAccount,
+    deleteSettlementAccount,
+    createContactAccessGroup,
+    updateContactAccessGroup,
+    resetContactAccessGroupPin,
+    deleteContactAccessGroup,
     resetDemoData,
     markNotificationsRead,
     createClientRecord,

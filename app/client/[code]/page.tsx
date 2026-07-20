@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ClientApp } from "@/components/client-app";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { loadAppStateFromSupabase } from "@/lib/supabase-state";
+import { filterStateForContactAccessGroup } from "@/lib/contact-groups";
 
 import type { Metadata } from "next";
 
@@ -25,26 +26,18 @@ export default async function ClientPage({ params }: { params: Promise<{ code: s
     return <ClientApp />;
   }
 
-  // Find the specific client by inviteCode
-  const client = rawState.clients.find(c => c.inviteCode === code);
-  if (!client) {
+  const contactAccessGroup = rawState.contactAccessGroups.find(
+    (group) => group.inviteCode === code && group.status === "active"
+  );
+  if (!contactAccessGroup) {
     notFound();
   }
 
-  // Filter the state to ONLY include this client's data!
-  const filteredState = {
-    ...rawState,
-    clients: [client],
-    defaultQuantities: rawState.defaultQuantities.filter(q => q.clientId === client.id),
-    orders: rawState.orders.filter(o => o.clientId === client.id),
-    orderChangeLogs: rawState.orderChangeLogs.filter(l => l.clientId === client.id),
-    changeRequests: rawState.changeRequests.filter(r => r.clientId === client.id),
-    holidays: rawState.holidays.filter(h => h.clientId === client.id || !h.clientId), // Global holidays don't have clientId
-    monthlyAdjustments: [], // Settlement adjustments are admin-only
-    notifications: rawState.notifications.filter(n => n.clientId === client.id && n.target === "client"),
-    auditLogs: [], // Clients don't need admin audit logs
-    deliveryOverrides: {} // Clients don't need to know delivery routes of others
-  };
+  // The customer bundle only contains locations explicitly assigned to this contact group.
+  const filteredState = filterStateForContactAccessGroup(rawState, contactAccessGroup.id);
+  if (filteredState.clients.length === 0) {
+    notFound();
+  }
 
-  return <ClientApp initialState={filteredState} />;
+  return <ClientApp initialState={filteredState} contactAccessGroup={rawState.groupStorageReady ? contactAccessGroup : undefined} />;
 }

@@ -1,4 +1,5 @@
 import { isPastCutoffForDate, todayKey } from "@/lib/date";
+import { getClientsForSettlementAccount, normalizeContactGroupState } from "@/lib/contact-groups";
 import type {
   AppState,
   Client,
@@ -104,19 +105,26 @@ export function enabledMealTypes(state: Pick<AppState, "mealTypes">) {
 }
 
 export function normalizeAppState(state: AppState): AppState {
+  const grouping = normalizeContactGroupState({
+    clients: (state.clients ?? []).map((client) => ({
+      ...client,
+      mealSupplyType: client.mealSupplyType ?? "regular"
+    })),
+    settlementAccounts: state.settlementAccounts ?? [],
+    contactAccessGroups: state.contactAccessGroups ?? [],
+    contactAccessGroupMembers: state.contactAccessGroupMembers ?? []
+  });
   const mealTypes = normalizeMealTypes(state.mealTypes ?? []);
   const defaultQuantities = normalizeDefaultQuantities({
-    clients: state.clients ?? [],
+    clients: grouping.clients,
     mealTypes,
     defaultQuantities: state.defaultQuantities ?? []
   });
 
   return {
     ...state,
-    clients: (state.clients ?? []).map((client) => ({
-      ...client,
-      mealSupplyType: client.mealSupplyType ?? "regular"
-    })),
+    ...grouping,
+    groupStorageReady: state.groupStorageReady === true,
     mealTypes,
     defaultQuantities,
     orders: state.orders ?? [],
@@ -356,6 +364,50 @@ export function getMonthlySettlementForClient(state: AppState, clientId: string,
     settlementFinalQuantity: adjustment?.finalQuantity ?? computedFinalQuantity,
     rejectedCount: orders.filter((order) => order.status === "rejected").length,
     changedCount: orders.filter((order) => order.status === "changed").length
+  };
+}
+
+export function getSettlementAccountMonthlyAdjustment(
+  state: AppState,
+  settlementAccountId: string,
+  month: string
+) {
+  return state.monthlyAdjustments.find(
+    (adjustment) => adjustment.settlementAccountId === settlementAccountId && adjustment.month === month
+  );
+}
+
+export function getMonthlySettlementForSettlementAccount(
+  state: AppState,
+  settlementAccountId: string,
+  month: string
+) {
+  const clients = getClientsForSettlementAccount(state, settlementAccountId);
+  const clientSettlements = clients.map((client) => getMonthlySettlementForClient(state, client.id, month));
+  const computedBaseQuantity = clientSettlements.reduce(
+    (sum, settlement) => sum + settlement.computedBaseQuantity,
+    0
+  );
+  const computedFinalQuantity = clientSettlements.reduce(
+    (sum, settlement) => sum + settlement.computedFinalQuantity,
+    0
+  );
+  const locationAdjustedFinalQuantity = clientSettlements.reduce(
+    (sum, settlement) => sum + settlement.settlementFinalQuantity,
+    0
+  );
+  const adjustment = getSettlementAccountMonthlyAdjustment(state, settlementAccountId, month);
+
+  return {
+    clients,
+    clientSettlements,
+    adjustment,
+    computedBaseQuantity,
+    computedFinalQuantity,
+    locationAdjustedFinalQuantity,
+    settlementFinalQuantity: adjustment?.finalQuantity ?? locationAdjustedFinalQuantity,
+    rejectedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.rejectedCount, 0),
+    changedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.changedCount, 0)
   };
 }
 

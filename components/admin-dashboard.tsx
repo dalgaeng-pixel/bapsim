@@ -33,6 +33,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Logo } from "@/components/logo";
+import { GroupManager } from "@/components/group-manager";
 import { logoutAdminAction } from "@/app/actions/auth";
 import {
   getPushNotificationStatus,
@@ -50,6 +51,7 @@ import {
   getWeeklyQuantitiesForClient,
   getClientMealSupplyType,
   getMonthlySettlementForClient,
+  getMonthlySettlementForSettlementAccount,
   isClientStartedOnDate,
   mealSupplyTypeLabel,
   MEAL_SUPPLY_TYPE_LABELS,
@@ -57,12 +59,13 @@ import {
   WEEKDAYS,
   type WeeklyQuantities
 } from "@/lib/schedule";
-import type { Client, DailyMealOrder, AppState, Holiday, HolidayRuleType } from "@/lib/types";
+import type { Client, DailyMealOrder, AppState, Holiday, HolidayRuleType, SettlementAccount } from "@/lib/types";
 
 const tabs = [
   { id: "overview", label: "오늘 현황", icon: ListChecks },
   { id: "important", label: "중요 변경", icon: AlertTriangle },
   { id: "clients", label: "거래처", icon: Building2 },
+  { id: "groups", label: "정산/담당자", icon: ShieldCheck },
   { id: "delivery", label: "배달표", icon: Truck },
   { id: "monthly", label: "월별 집계", icon: FileSpreadsheet },
   { id: "settings", label: "설정", icon: Settings }
@@ -517,6 +520,10 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
             </div>
           ) : null}
 
+          {tab === "groups" ? (
+            <GroupManager adminName={adminName} store={store} />
+          ) : null}
+
           {tab === "clients" ? (
             <ClientManager adminName={adminName} store={store} />
           ) : null}
@@ -555,7 +562,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">순서</th>
                       <th>업체</th>
-                      <th>유형</th>
+                      <th>배송 장소</th>
                       <th>수량</th>
                       <th>주소</th>
                       <th className="hidden md:table-cell">배달 메모</th>
@@ -659,9 +666,9 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
-                      <th className="py-3">업체</th>
-                      <th>유형</th>
-                      <th className="hidden md:table-cell">납품 시작</th>
+                      <th className="py-3">정산 업체</th>
+                      <th>배송 장소</th>
+                      <th className="hidden md:table-cell">식수 구성</th>
                       <th className="hidden sm:table-cell">기본</th>
                       <th className="hidden sm:table-cell">자동 최종</th>
                       <th>정산 최종</th>
@@ -672,13 +679,13 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {state.clients.map((client) => {
-                      const settlement = getMonthlySettlementForClient(state, client.id, selectedMonth);
+                    {state.settlementAccounts.map((account) => {
+                      const settlement = getMonthlySettlementForSettlementAccount(state, account.id, selectedMonth);
                       return (
-                        <MonthlySettlementRow
-                          key={`${selectedMonth}:${client.id}`}
+                        <SettlementMonthlyRow
+                          key={`${selectedMonth}:${account.id}`}
                           adminName={adminName}
-                          client={client}
+                          account={account}
                           month={selectedMonth}
                           settlement={settlement}
                           store={store}
@@ -756,8 +763,8 @@ function OrderTable({
       <table className="w-full border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
-            <th className="py-3">업체</th>
-            <th>유형</th>
+            <th className="py-3">정산 업체</th>
+            <th>배송 장소</th>
             <th>기본</th>
             <th>최종</th>
             <th>상태</th>
@@ -917,6 +924,76 @@ function MonthlySettlementRow({
   );
 }
 
+function SettlementMonthlyRow({
+  adminName,
+  account,
+  month,
+  settlement,
+  store
+}: {
+  adminName: string;
+  account: SettlementAccount;
+  month: string;
+  settlement: ReturnType<typeof getMonthlySettlementForSettlementAccount>;
+  store: ReturnType<typeof useBapsimStore>;
+}) {
+  const [quantity, setQuantity] = useState(String(settlement.settlementFinalQuantity));
+  const [memo, setMemo] = useState(settlement.adjustment?.memo ?? "");
+
+  useEffect(() => {
+    setQuantity(String(settlement.settlementFinalQuantity));
+    setMemo(settlement.adjustment?.memo ?? "");
+  }, [account.id, month, settlement.adjustment?.memo, settlement.settlementFinalQuantity]);
+
+  const parsedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const normalizedMemo = memo.trim();
+  const dirty =
+    parsedQuantity !== settlement.settlementFinalQuantity ||
+    normalizedMemo !== (settlement.adjustment?.memo ?? "");
+  const correction = settlement.settlementFinalQuantity - settlement.computedFinalQuantity;
+  const regularQuantity = settlement.clientSettlements.reduce(
+    (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "regular" ? item.settlementFinalQuantity : 0),
+    0
+  );
+  const lunchboxQuantity = settlement.clientSettlements.reduce(
+    (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "lunchbox" ? item.settlementFinalQuantity : 0),
+    0
+  );
+
+  return (
+    <tr className="border-b border-stone-100 align-top">
+      <td className="py-3">
+        <p className="font-black">{account.name}</p>
+        {correction !== 0 ? <p className="mt-1 text-xs font-bold text-bapsim-red">{correction > 0 ? `+${correction}` : correction}개 보정</p> : null}
+      </td>
+      <td className="py-3">
+        <p className="font-semibold text-stone-700">{settlement.clients.map((client) => client.name).join(" · ") || "배송 장소 없음"}</p>
+      </td>
+      <td className="hidden md:table-cell py-3 text-sm font-semibold text-stone-600">일반 {regularQuantity}개 · 도시락 {lunchboxQuantity}개</td>
+      <td className="hidden sm:table-cell py-3">{settlement.computedBaseQuantity}개</td>
+      <td className="hidden sm:table-cell py-3">{settlement.computedFinalQuantity}개</td>
+      <td className="py-3">
+        <input className="focus-ring w-24 rounded-md border border-stone-300 px-3 py-2 text-right text-sm font-black text-bapsim-red" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+      </td>
+      <td className="hidden sm:table-cell py-3">{settlement.rejectedCount}건</td>
+      <td className="hidden sm:table-cell py-3">{settlement.changedCount}건</td>
+      <td className="py-3">
+        <input className="focus-ring w-full rounded-md border border-stone-300 px-3 py-2 text-sm" value={memo} placeholder="정산 보정 사유" onChange={(event) => setMemo(event.target.value)} />
+      </td>
+      <td className="py-3">
+        <div className="flex gap-1">
+          <button className="focus-ring rounded-md bg-bapsim-red p-2 text-white disabled:bg-stone-300" title="정산 수정 저장" disabled={!dirty || quantity.trim() === ""} onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, parsedQuantity, normalizedMemo, adminName)}>
+            <Save size={16} />
+          </button>
+          <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="장소별 자동 정산 수량으로 복원" onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, settlement.locationAdjustedFinalQuantity, "", adminName)}>
+            <RotateCcw size={16} />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 type ClientFormState = Pick<
   Client,
   | "name"
@@ -927,7 +1004,9 @@ type ClientFormState = Pick<
   | "deliveryMemo"
   | "deliveryStartDate"
   | "mealSupplyType"
+  | "settlementAccountId"
 > & {
+  contactAccessGroupId?: string;
   weeklyQuantities: WeeklyQuantities;
   exceptionRules: Holiday[];
 };
@@ -941,6 +1020,8 @@ const emptyClientForm: ClientFormState = {
   deliveryMemo: "",
   deliveryStartDate: todayKey(),
   mealSupplyType: "regular",
+  settlementAccountId: "",
+  contactAccessGroupId: "",
   weeklyQuantities: {},
   exceptionRules: []
 };
@@ -974,12 +1055,18 @@ function ClientManager({
     return "";
   };
 
+  const getContactAccessGroup = (client: Client) => {
+    const member = store.state.contactAccessGroupMembers.find((item) => item.clientId === client.id);
+    return store.state.contactAccessGroups.find((group) => group.id === member?.contactAccessGroupId);
+  };
+
   const copyInviteLink = (client: Client) => {
-    const link = getInviteLink(client.inviteCode);
-    const message = `저희 밥심을 이용해주셔서 감사합니다. 아래 링크를 클릭하시면 식사 관리 화면으로 이동됩니다. 기본정보는 저희 식당에서 입력하여 제공되오니, 변동사항이 있을시에만 링크를 통하여 입력해주시면 감사하겠습니다.\n\n*매번 사용하는게 아닙니다. 특별히 변동사항이 있을시에만 사용바랍니다.\n\n▶ 전용 접속 링크: ${link}\n▶ 보안 PIN 번호: ${client.invitePin}`;
-    
+    const contactGroup = getContactAccessGroup(client);
+    const link = getInviteLink(contactGroup?.inviteCode ?? client.inviteCode);
+    const message = `저희 밥심을 이용해주셔서 감사합니다. 아래 링크를 클릭하시면 식사 관리 화면으로 이동됩니다. 변동사항이 있을 때만 입력해 주세요.\n\n▶ 전용 접속 링크: ${link}\n▶ 보안 PIN 번호: ${contactGroup?.invitePin ?? client.invitePin}`;
+
     navigator.clipboard.writeText(message).then(() => {
-      alert("초대 링크와 PIN 번호, 안내 메시지가 복사되었습니다!\n(카카오톡 등에 바로 붙여넣기 하시면 됩니다.)");
+      alert("초대 링크와 PIN 번호, 안내 메시지가 복사되었습니다.\n카카오톡 등에 바로 붙여넣기 하시면 됩니다.");
     });
   };
 
@@ -1007,6 +1094,8 @@ function ClientManager({
       deliveryMemo: client.deliveryMemo,
       deliveryStartDate: client.deliveryStartDate ?? todayKey(),
       mealSupplyType: client.mealSupplyType ?? "regular",
+      settlementAccountId: client.settlementAccountId ?? "",
+      contactAccessGroupId: store.state.contactAccessGroupMembers.find((member) => member.clientId === client.id)?.contactAccessGroupId ?? "",
       weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
       exceptionRules: store.state.holidays.filter(
         (holiday) => holiday.clientId === client.id && holiday.ruleType
@@ -1093,6 +1182,36 @@ function ClientManager({
                 ))}
               </select>
             </label>
+            {(store.state.groupStorageReady || store.storageMode === "local") ? (
+              <>
+                <label className="block">
+                  <span className="text-sm font-black text-stone-700">정산 업체</span>
+                  <select
+                    className="focus-ring mt-2 w-full rounded-md border border-stone-300 bg-white px-3 py-3"
+                    value={form.settlementAccountId ?? ""}
+                    onChange={(event) => setForm((current) => ({ ...current, settlementAccountId: event.target.value || undefined }))}
+                  >
+                    <option value="">새 정산 업체로 등록</option>
+                    {store.state.settlementAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm font-black text-stone-700">담당자 접속 그룹</span>
+                  <select
+                    className="focus-ring mt-2 w-full rounded-md border border-stone-300 bg-white px-3 py-3"
+                    value={form.contactAccessGroupId ?? ""}
+                    onChange={(event) => setForm((current) => ({ ...current, contactAccessGroupId: event.target.value || undefined }))}
+                  >
+                    <option value="">이 장소 전용 담당자 그룹 생성</option>
+                    {store.state.contactAccessGroups.map((group) => (
+                      <option key={group.id} value={group.id}>{group.name}</option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : null}
             <Field
               label="주소"
               value={form.address}
@@ -1264,14 +1383,14 @@ function ClientManager({
             
             <div className="mt-8 flex justify-center">
               <div className="rounded-xl border-4 border-bapsim-red p-4">
-                <QRCodeSVG value={getInviteLink(qrClient.inviteCode)} size={200} />
+                <QRCodeSVG value={getInviteLink(getContactAccessGroup(qrClient)?.inviteCode ?? qrClient.inviteCode)} size={200} />
               </div>
             </div>
 
             <div className="mt-8 rounded-lg bg-stone-100 p-3 text-center">
               <p className="text-sm font-bold text-stone-700">고유 PIN 번호</p>
               <p className="mt-1 text-3xl font-black tracking-[0.2em] text-bapsim-red">
-                {qrClient.invitePin}
+                {getContactAccessGroup(qrClient)?.invitePin ?? qrClient.invitePin}
               </p>
             </div>
 

@@ -1,7 +1,7 @@
 # Settlement and Contact Access Group Design
 
 Last updated: 2026-07-20 KST
-Status: Accepted design, implementation pending
+Status: Implemented in source; Supabase migration and production verification pending
 
 ## Understanding Summary
 
@@ -113,6 +113,13 @@ Recommended indexes:
    - print room 1 and print room 3 together
 5. Switch the customer route and server actions to contact-access-group authorization only after migration verification succeeds.
 6. Retire legacy client-level invite code/PIN fields only in a later cleanup migration, after production verification and a rollback window.
+
+## Implementation Record
+
+- Implemented: 2026-07-20 KST.
+- Added migration: `docs/supabase-contact-groups-migration.sql`.
+- Added admin group management, account-level monthly aggregation and CSV export, group-aware customer routing, multi-location customer selection, and server-side customer mutation membership checks.
+- Pending operation: run the migration in the production Supabase SQL Editor, configure Hanul Trading, then verify shared print-room access in production.
 
 ## Validation Criteria
 

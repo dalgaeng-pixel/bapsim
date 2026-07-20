@@ -13,7 +13,7 @@ This file is the first stop for the next agent or developer continuing the proje
 - Framework: Next.js 15, React 19, TypeScript, Tailwind CSS
 - Current storage mode: **Supabase connected** (Server Components + Server Actions)
 - Supabase project: `babsim` at `https://fnfdudfzasgaukpfmxkv.supabase.co`
-- Supabase schema: `docs/supabase-schema.sql` + `docs/supabase-rls-policies.sql` applied
+- Supabase schema: base schema and RLS policies applied. Run `docs/supabase-contact-groups-migration.sql` once before using settlement/contact groups in production.
 - PWA: manifest, service worker, installable HTTPS deployment prepared
 - Production URL: `https://bapsim.vercel.app` (Deployed via Vercel)
 
@@ -31,6 +31,8 @@ This file is the first stop for the next agent or developer continuing the proje
 - **Editable Monthly Settlement**: The monthly tab now has a month selector and editable settlement final quantity per client. Default meal quantities are included automatically up to the current date and per-meal cutoff; original daily orders stay unchanged; manual settlement overrides are stored as `monthlyAdjustments` and persisted as encoded internal rows in `holidays`.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
 - **Mobile Layout Optimization**: Prevented horizontal scrolling issues by removing fixed minimum widths (`min-w-[...]`) from tables, hiding non-essential columns on mobile, and ensuring long addresses wrap correctly with `break-all`.
+- **Settlement Accounts & Contact Access Groups**: Delivery locations remain `clients`, while `settlement_accounts` controls admin-only monthly aggregation and `contact_access_groups` + members controls one shared customer link/PIN for one or more permitted locations. Delivery stays location based; monthly CSV and settlement rows are account based.
+- **Contact-Group Server Verification**: Customer mutations use `syncContactAccessGroupDiffAction`, which verifies invite code, PIN, group status, and every supplied location membership before saving. Customer diff payloads cannot update client records, groups, schedules, settlement adjustments, routes, or audit logs.
 
 ## How To Run Locally
 
@@ -71,40 +73,49 @@ Expected current result:
 ## Key Files
 
 - `components/admin-dashboard.tsx`: admin UI, tabs, client management, delivery table, CSV actions.
-- `components/client-app.tsx`: customer PIN login, quantity change, rejection, profile change requests.
+- `components/client-app.tsx`: customer PIN login, multi-location selection for an authorized contact group, quantity change, rejection, profile change requests.
 - `lib/schedule.ts`: shared scheduling rules for lunch/dinner defaults, weekday quantities, virtual daily orders, and no-meal exception rules.
 - `lib/push-client.ts`: browser push support detection, permission handling, push subscribe/unsubscribe toggle.
 - `lib/use-bapsim-store.ts`: main client-side state store, calculating state diffs including deleted IDs and syncing via Server Action.
-- `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows and applies diff upserts/deletes.
-- `app/actions/state.ts`: Server Actions for receiving diffs and securely updating Supabase.
-- `app/client/[code]/page.tsx`: Dynamic route for client app, featuring strict server-side data isolation.
+- `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows, including settlement accounts, contact access groups, members, and group settlement adjustments.
+- `app/actions/state.ts`: Admin state diff Server Action.
+- `app/actions/contact-state.ts`: customer contact diff Server Action with code/PIN and assigned-location verification.
+- `components/group-manager.tsx`: admin settlement-account and contact-access-group management UI.
+- `lib/contact-groups.ts`: group membership, legacy fallback, and client-state filtering helpers.
+- `app/client/[code]/page.tsx`: Dynamic route resolving an active contact access group and injecting only its assigned delivery locations.
 - `app/admin/page.tsx`: SSR entry point for the Admin Dashboard.
-- `docs/supabase-schema.sql`: Supabase table schema (applied).
+- `docs/supabase-schema.sql`: Supabase table schema for a new project.
+- `docs/supabase-contact-groups-migration.sql`: required one-time migration for the existing production project.
 - `docs/supabase-rls-policies.sql`: RLS policies and service_role grants (applied).
 
 ## Data Model Summary
 
 The app state currently contains:
 
-- `clients`: customer companies, addresses, manager contact, delivery order, invite code/PIN, delivery start date, meal supply type.
+- `clients`: delivery locations with address, delivery order, legacy invite fields, delivery start date, meal supply type, and `settlementAccountId`.
 - `mealTypes`: meal categories, currently lunch and dinner.
 - `defaultQuantities`: weekday and meal-type default quantities.
 - `orders`: date-specific meal quantities and statuses.
 - `orderChangeLogs`: quantity change history.
 - `changeRequests`: late changes and company/contact update requests.
 - `holidays`: global/client-specific holidays and encoded simple no-meal exception rules.
-- `monthlyAdjustments`: admin-only monthly settlement overrides by client/month.
+- `settlementAccounts`: billing and monthly-aggregation accounts, each with one or more delivery locations.
+- `contactAccessGroups`: customer-facing link/PIN accounts and their assigned manager details.
+- `contactAccessGroupMembers`: explicit allowed delivery locations per contact access group.
+- `monthlyAdjustments`: admin-only monthly settlement overrides by client/month or settlement account/month.
 - `notifications`: in-app notification records.
 - `auditLogs`: important admin action history.
 - `deliveryOverrides`: per-day temporary delivery ordering.
 
-## Accepted Design (Implementation Pending)
+## Settlement and Contact Groups (Implemented in Source)
 
-- `docs/contact-group-design.md` records the accepted plan for separating **settlement accounts** from **customer contact access groups**.
-- Delivery locations remain the existing `clients`; delivery tables stay location based.
-- A settlement account aggregates connected delivery locations for admin-only monthly settlement and invoicing.
-- A contact access group has one link/PIN and grants access only to its assigned delivery locations. This supports the one-contact print room 1 + print room 3 case without exposing management office or warehouse data.
-- Implementation requires dedicated Supabase tables, a backward-compatible migration of existing client links/PINs, route/action authorization changes, and focused security tests. No application behavior has changed yet.
+- The accepted design is in `docs/contact-group-design.md`.
+- Migration SQL is `docs/supabase-contact-groups-migration.sql`. **Run it in the production Supabase SQL Editor before using the group UI.** The current environment has no Supabase CLI or database connection credentials, so this step was not applied automatically.
+- The migration creates one settlement account and one contact group per existing delivery location, preserving current links and PINs.
+- After migration: create `한울상사` in `정산/담당자`, edit management office, warehouse, print room 1, and print room 3 to select that settlement account, then create one contact group for print rooms 1 and 3. Their former individual-group access is reassigned to the shared group.
+- Delivery tables remain location based. Monthly settlement and CSV export aggregate by settlement account.
+- `npm run typecheck` and `npm run build` passed after implementation. `npm run test:supabase` was not run because it performs an external service-role credential check.
+
 ## Next Recommended Work
 
 1. Wire real admin phone OTP.

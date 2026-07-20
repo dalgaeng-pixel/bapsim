@@ -5,12 +5,15 @@ import type {
   AppState,
   ChangeRequest,
   Client,
+  ContactAccessGroup,
+  ContactAccessGroupMember,
   DailyMealOrder,
   DefaultMealQuantity,
   Holiday,
   MealType,
   MonthlyAdjustment,
-  OrderChangeLog
+  OrderChangeLog,
+  SettlementAccount
 } from "@/lib/types";
 import {
   buildClientSettingsHolidayRow,
@@ -38,6 +41,38 @@ type ClientRow = {
   invite_code: string;
   invite_pin: string;
   last_seen_at: string | null;
+  settlement_account_id: string | null;
+};
+
+type SettlementAccountRow = {
+  id: string;
+  name: string;
+  status: SettlementAccount["status"];
+};
+
+type ContactAccessGroupRow = {
+  id: string;
+  name: string;
+  manager_name: string;
+  manager_phone: string;
+  invite_code: string;
+  invite_pin: string;
+  status: ContactAccessGroup["status"];
+};
+
+type ContactAccessGroupMemberRow = {
+  id: string;
+  contact_access_group_id: string;
+  client_id: string;
+};
+
+type MonthlySettlementAdjustmentRow = {
+  id: string;
+  month: string;
+  settlement_account_id: string;
+  final_quantity: number;
+  memo: string | null;
+  updated_at: string;
 };
 
 type MealTypeRow = {
@@ -149,6 +184,41 @@ async function selectRows<T>(client: SupabaseClient, table: string): Promise<T[]
   return (data ?? []) as T[];
 }
 
+async function selectOptionalRows<T>(client: SupabaseClient, table: string): Promise<T[] | undefined> {
+  const { data, error } = await client.from(table).select("*");
+
+  if (!error) {
+    return (data ?? []) as T[];
+  }
+
+  if (error.code === "42P01" || /does not exist|schema cache/i.test(error.message)) {
+    return undefined;
+  }
+
+  throw new Error(`${table}: ${error.message}`);
+}
+
+function toClientRow(item: Client, includeSettlementAccount: boolean) {
+  const row = {
+    id: item.id,
+    name: item.name,
+    address: item.address,
+    address_detail: item.addressDetail,
+    manager_name: item.managerName,
+    manager_phone: item.managerPhone,
+    delivery_memo: item.deliveryMemo,
+    delivery_order: item.deliveryOrder,
+    status: item.status,
+    invite_code: item.inviteCode,
+    invite_pin: item.invitePin,
+    last_seen_at: item.lastSeenAt ?? null
+  };
+
+  return includeSettlementAccount
+    ? { ...row, settlement_account_id: item.settlementAccountId ?? null }
+    : row;
+}
+
 async function upsertRows<T extends Record<string, unknown>>(
   client: SupabaseClient,
   table: string,
@@ -190,7 +260,11 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     holidayRows,
     notificationRows,
     auditRows,
-    deliveryOverrideRows
+    deliveryOverrideRows,
+    settlementAccountRows,
+    contactAccessGroupRows,
+    contactAccessGroupMemberRows,
+    settlementAdjustmentRows
   ] = await Promise.all([
     selectRows<ClientRow>(client, "clients"),
     selectRows<MealTypeRow>(client, "meal_types"),
@@ -201,7 +275,11 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     selectRows<HolidayRow>(client, "holidays"),
     selectRows<NotificationRow>(client, "notifications"),
     selectRows<AuditLogRow>(client, "admin_audit_logs"),
-    selectRows<DeliveryOverrideRow>(client, "delivery_order_overrides")
+    selectRows<DeliveryOverrideRow>(client, "delivery_order_overrides"),
+    selectOptionalRows<SettlementAccountRow>(client, "settlement_accounts"),
+    selectOptionalRows<ContactAccessGroupRow>(client, "contact_access_groups"),
+    selectOptionalRows<ContactAccessGroupMemberRow>(client, "contact_access_group_members"),
+    selectOptionalRows<MonthlySettlementAdjustmentRow>(client, "monthly_settlement_adjustments")
   ]);
 
   const deliveryOverrides = Object.fromEntries(
@@ -212,10 +290,25 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       .filter((row) => row.client_id && isClientSettingsHolidayRow(row))
       .map((row) => [row.client_id!, decodeClientSettingsName(row.name)])
   );
-  const monthlyAdjustments = holidayRows.flatMap((row): MonthlyAdjustment[] => {
-    const adjustment = decodeMonthlyAdjustmentName(row.name);
-    return adjustment ? [{ id: row.id, ...adjustment }] : [];
-  });
+  const monthlyAdjustments = [
+    ...holidayRows.flatMap((row): MonthlyAdjustment[] => {
+      const adjustment = decodeMonthlyAdjustmentName(row.name);
+      return adjustment ? [{ id: row.id, ...adjustment }] : [];
+    }),
+    ...(settlementAdjustmentRows ?? []).map((row): MonthlyAdjustment => ({
+      id: row.id,
+      month: row.month.slice(0, 7),
+      settlementAccountId: row.settlement_account_id,
+      finalQuantity: row.final_quantity,
+      memo: row.memo ?? undefined,
+      updatedAt: row.updated_at
+    }))
+  ];
+  const groupStorageReady =
+    settlementAccountRows !== undefined &&
+    contactAccessGroupRows !== undefined &&
+    contactAccessGroupMemberRows !== undefined &&
+    settlementAdjustmentRows !== undefined;
 
   return normalizeAppState({
     clients: clientRows.map((row): Client => ({
@@ -230,10 +323,31 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       status: row.status,
       inviteCode: row.invite_code,
       invitePin: row.invite_pin,
+      settlementAccountId: row.settlement_account_id ?? undefined,
       deliveryStartDate: clientSettings[row.id]?.deliveryStartDate,
       mealSupplyType: clientSettings[row.id]?.mealSupplyType === "lunchbox" ? "lunchbox" : "regular",
       lastSeenAt: row.last_seen_at ?? undefined
     })),
+    settlementAccounts: (settlementAccountRows ?? []).map((row): SettlementAccount => ({
+      id: row.id,
+      name: row.name,
+      status: row.status
+    })),
+    contactAccessGroups: (contactAccessGroupRows ?? []).map((row): ContactAccessGroup => ({
+      id: row.id,
+      name: row.name,
+      managerName: row.manager_name,
+      managerPhone: row.manager_phone,
+      inviteCode: row.invite_code,
+      invitePin: row.invite_pin,
+      status: row.status
+    })),
+    contactAccessGroupMembers: (contactAccessGroupMemberRows ?? []).map((row): ContactAccessGroupMember => ({
+      id: row.id,
+      contactAccessGroupId: row.contact_access_group_id,
+      clientId: row.client_id
+    })),
+    groupStorageReady,
     mealTypes: mealTypeRows.map((row): MealType => ({
       id: row.id,
       name: row.name,
@@ -322,177 +436,30 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
 }
 
 export async function saveAppStateToSupabase(client: SupabaseClient, state: AppState) {
-  await upsertRows(
-    client,
-    "clients",
-    state.clients.map((item) => ({
-      id: item.id,
-      name: item.name,
-      address: item.address,
-      address_detail: item.addressDetail,
-      manager_name: item.managerName,
-      manager_phone: item.managerPhone,
-      delivery_memo: item.deliveryMemo,
-      delivery_order: item.deliveryOrder,
-      status: item.status,
-      invite_code: item.inviteCode,
-      invite_pin: item.invitePin,
-      last_seen_at: item.lastSeenAt ?? null
-    }))
-  );
-  await upsertRows(
-    client,
-    "holidays",
-    state.clients.map((item) => buildClientSettingsHolidayRow(item))
-  );
-
-  await upsertRows(
-    client,
-    "meal_types",
-    state.mealTypes.map((item) => ({
-      id: item.id,
-      name: item.name,
-      cutoff_time: item.cutoffTime,
-      enabled: item.enabled
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "default_meal_quantities",
-    state.defaultQuantities.map((item) => ({
-      id: item.id,
-      client_id: item.clientId,
-      meal_type_id: item.mealTypeId,
-      weekday: item.weekday,
-      quantity: item.quantity
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "daily_meal_orders",
-    state.orders.map((item) => ({
-      id: item.id,
-      order_date: item.date,
-      client_id: item.clientId,
-      meal_type_id: item.mealTypeId,
-      base_quantity: item.baseQuantity,
-      final_quantity: item.finalQuantity,
-      status: item.status,
-      memo: item.memo ?? null,
-      requires_review: item.requiresReview,
-      acknowledged: item.acknowledged,
-      updated_at: item.updatedAt
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "order_change_logs",
-    state.orderChangeLogs.map((item) => ({
-      id: item.id,
-      order_id: item.orderId,
-      client_id: item.clientId,
-      meal_type_id: item.mealTypeId,
-      order_date: item.date,
-      actor_type: item.actorType,
-      actor_name: item.actorName,
-      before_quantity: item.beforeQuantity,
-      after_quantity: item.afterQuantity,
-      memo: item.memo ?? null,
-      created_at: item.createdAt
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "change_requests",
-    state.changeRequests.map((item) => ({
-      id: item.id,
-      type: item.type,
-      status: item.status,
-      client_id: item.clientId,
-      order_id: item.orderId ?? null,
-      meal_type_id: item.mealTypeId ?? null,
-      order_date: item.date ?? null,
-      current_quantity: item.currentQuantity ?? null,
-      requested_quantity: item.requestedQuantity ?? null,
-      current_address: item.currentAddress ?? null,
-      requested_address: item.requestedAddress ?? null,
-      current_address_detail: item.currentAddressDetail ?? null,
-      requested_address_detail: item.requestedAddressDetail ?? null,
-      current_manager_name: item.currentManagerName ?? null,
-      requested_manager_name: item.requestedManagerName ?? null,
-      current_manager_phone: item.currentManagerPhone ?? null,
-      requested_manager_phone: item.requestedManagerPhone ?? null,
-      memo: item.memo ?? null,
-      requested_at: item.requestedAt,
-      resolved_at: item.resolvedAt ?? null,
-      resolved_by: item.resolvedBy ?? null
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "holidays",
-    state.holidays.map((item) => ({
-      id: item.id,
-      holiday_date: item.date,
-      name: encodeHolidayName(item),
-      client_id: item.clientId ?? null
-    }))
-  );
-  await upsertRows(
-    client,
-    "holidays",
-    state.monthlyAdjustments.map((item) => buildMonthlyAdjustmentHolidayRow(item))
-  );
-
-  await upsertRows(
-    client,
-    "notifications",
-    state.notifications.map((item) => ({
-      id: item.id,
-      target: item.target,
-      client_id: item.clientId ?? null,
-      title: item.title,
-      body: item.body,
-      read: item.read,
-      created_at: item.createdAt
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "admin_audit_logs",
-    state.auditLogs.map((item) => ({
-      id: item.id,
-      action: item.action,
-      admin_name: item.adminName,
-      target_label: item.targetLabel,
-      detail: item.detail,
-      created_at: item.createdAt
-    }))
-  );
-
-  await upsertRows(
-    client,
-    "delivery_order_overrides",
-    Object.entries(state.deliveryOverrides).map(([key, clientOrder]) => {
-      const [orderDate, mealTypeId] = key.split(":");
-      return {
-        order_date: orderDate,
-        meal_type_id: mealTypeId,
-        client_order: clientOrder
-      };
-    }),
-    "order_date,meal_type_id"
-  );
+  await saveAppStateDiffToSupabase(client, {
+    clients: state.clients,
+    settlementAccounts: state.settlementAccounts,
+    contactAccessGroups: state.contactAccessGroups,
+    contactAccessGroupMembers: state.contactAccessGroupMembers,
+    mealTypes: state.mealTypes,
+    defaultQuantities: state.defaultQuantities,
+    orders: state.orders,
+    orderChangeLogs: state.orderChangeLogs,
+    changeRequests: state.changeRequests,
+    holidays: state.holidays,
+    monthlyAdjustments: state.monthlyAdjustments,
+    notifications: state.notifications,
+    auditLogs: state.auditLogs,
+    deliveryOverrides: state.deliveryOverrides,
+    groupStorageReady: state.groupStorageReady
+  });
 }
 
 export type AppStateArrayKey =
   | "clients"
+  | "settlementAccounts"
+  | "contactAccessGroups"
+  | "contactAccessGroupMembers"
   | "mealTypes"
   | "defaultQuantities"
   | "orders"
@@ -505,6 +472,10 @@ export type AppStateArrayKey =
 
 export type AppStateDiff = {
   clients?: Client[];
+  settlementAccounts?: SettlementAccount[];
+  contactAccessGroups?: ContactAccessGroup[];
+  contactAccessGroupMembers?: ContactAccessGroupMember[];
+  groupStorageReady?: boolean;
   mealTypes?: MealType[];
   defaultQuantities?: DefaultMealQuantity[];
   orders?: DailyMealOrder[];
@@ -519,6 +490,7 @@ export type AppStateDiff = {
 };
 
 export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: AppStateDiff) {
+  const groupStorageReady = diff.groupStorageReady === true;
   if (diff.deleted) {
     await deleteRows(client, "order_change_logs", diff.deleted.orderChangeLogs ?? []);
     await deleteRows(client, "change_requests", diff.deleted.changeRequests ?? []);
@@ -529,33 +501,60 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     await deleteRows(client, "default_meal_quantities", diff.deleted.defaultQuantities ?? []);
     await deleteRows(client, "daily_meal_orders", diff.deleted.orders ?? []);
     await deleteRows(client, "admin_audit_logs", diff.deleted.auditLogs ?? []);
+    if (groupStorageReady) {
+      await deleteRows(client, "contact_access_group_members", diff.deleted.contactAccessGroupMembers ?? []);
+      await deleteRows(client, "monthly_settlement_adjustments", diff.deleted.monthlyAdjustments ?? []);
+    }
     await deleteRows(client, "clients", diff.deleted.clients ?? []);
+    if (groupStorageReady) {
+      await deleteRows(client, "contact_access_groups", diff.deleted.contactAccessGroups ?? []);
+      await deleteRows(client, "settlement_accounts", diff.deleted.settlementAccounts ?? []);
+    }
     await deleteRows(client, "meal_types", diff.deleted.mealTypes ?? []);
   }
 
-  if (diff.clients?.length) {
+  if (groupStorageReady && diff.settlementAccounts?.length) {
     await upsertRows(
       client,
-      "clients",
-      diff.clients.map((item) => ({
+      "settlement_accounts",
+      diff.settlementAccounts.map((item) => ({ id: item.id, name: item.name, status: item.status }))
+    );
+  }
+
+  if (groupStorageReady && diff.contactAccessGroups?.length) {
+    await upsertRows(
+      client,
+      "contact_access_groups",
+      diff.contactAccessGroups.map((item) => ({
         id: item.id,
         name: item.name,
-        address: item.address,
-        address_detail: item.addressDetail,
         manager_name: item.managerName,
         manager_phone: item.managerPhone,
-        delivery_memo: item.deliveryMemo,
-        delivery_order: item.deliveryOrder,
-        status: item.status,
         invite_code: item.inviteCode,
         invite_pin: item.invitePin,
-        last_seen_at: item.lastSeenAt ?? null
+        status: item.status
       }))
     );
+  }
+
+  if (diff.clients?.length) {
+    await upsertRows(client, "clients", diff.clients.map((item) => toClientRow(item, groupStorageReady)));
     await upsertRows(
       client,
       "holidays",
       diff.clients.map((item) => buildClientSettingsHolidayRow(item))
+    );
+  }
+
+  if (groupStorageReady && diff.contactAccessGroupMembers?.length) {
+    await upsertRows(
+      client,
+      "contact_access_group_members",
+      diff.contactAccessGroupMembers.map((item) => ({
+        id: item.id,
+        contact_access_group_id: item.contactAccessGroupId,
+        client_id: item.clientId
+      }))
     );
   }
 
@@ -670,11 +669,30 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
   }
 
   if (diff.monthlyAdjustments?.length) {
-    await upsertRows(
-      client,
-      "holidays",
-      diff.monthlyAdjustments.map((item) => buildMonthlyAdjustmentHolidayRow(item))
-    );
+    const clientAdjustments = diff.monthlyAdjustments.filter((item) => !!item.clientId);
+    if (clientAdjustments.length) {
+      await upsertRows(
+        client,
+        "holidays",
+        clientAdjustments.map((item) => buildMonthlyAdjustmentHolidayRow(item))
+      );
+    }
+
+    const settlementAdjustments = diff.monthlyAdjustments.filter((item) => !!item.settlementAccountId);
+    if (groupStorageReady && settlementAdjustments.length) {
+      await upsertRows(
+        client,
+        "monthly_settlement_adjustments",
+        settlementAdjustments.map((item) => ({
+          id: item.id,
+          month: `${item.month}-01`,
+          settlement_account_id: item.settlementAccountId,
+          final_quantity: item.finalQuantity,
+          memo: item.memo ?? null,
+          updated_at: item.updatedAt
+        }))
+      );
+    }
   }
 
   if (diff.notifications?.length) {

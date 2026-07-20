@@ -58,3 +58,20 @@ create policy "service_role_all_admin_audit_logs" on public.admin_audit_logs
 
 create policy "service_role_all_delivery_order_overrides" on public.delivery_order_overrides
   for all to service_role using (true) with check (true);
+
+grant all on public.settlement_accounts to service_role;
+grant all on public.contact_access_groups to service_role;
+grant all on public.contact_access_group_members to service_role;
+grant all on public.monthly_settlement_adjustments to service_role;
+
+create policy "service_role_all_settlement_accounts" on public.settlement_accounts
+  for all to service_role using (true) with check (true);
+
+create policy "service_role_all_contact_access_groups" on public.contact_access_groups
+  for all to service_role using (true) with check (true);
+
+create policy "service_role_all_contact_access_group_members" on public.contact_access_group_members
+  for all to service_role using (true) with check (true);
+
+create policy "service_role_all_monthly_settlement_adjustments" on public.monthly_settlement_adjustments
+  for all to service_role using (true) with check (true);
