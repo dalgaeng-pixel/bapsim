@@ -387,16 +387,26 @@ export type SettlementDailyQuantity = {
   finalQuantity: number;
 };
 
-export function getMonthlySettlementDailyQuantities(
+export type SettlementLocationDailyQuantity = SettlementDailyQuantity & {
+  clientId: string;
+  clientName: string;
+};
+
+export function getMonthlySettlementDailyQuantitiesByLocation(
   state: AppState,
   settlementAccountId: string,
   month: string
-): SettlementDailyQuantity[] {
+): SettlementLocationDailyQuantity[] {
   const settlement = getMonthlySettlementForSettlementAccount(state, settlementAccountId, month);
-  const daily = new Map<string, SettlementDailyQuantity>();
 
-  settlement.clientSettlements.forEach((clientSettlement, index) => {
-    const supplyType = getClientMealSupplyType(settlement.clients[index]);
+  return settlement.clientSettlements.flatMap((clientSettlement, index) => {
+    const client = settlement.clients[index];
+    if (!client) {
+      return [];
+    }
+
+    const supplyType = getClientMealSupplyType(client);
+    const daily = new Map<string, SettlementLocationDailyQuantity>();
     clientSettlement.orders.forEach((order) => {
       const quantity = Math.max(0, order.finalQuantity);
       if (quantity === 0) {
@@ -404,6 +414,8 @@ export function getMonthlySettlementDailyQuantities(
       }
 
       const current = daily.get(order.date) ?? {
+        clientId: client.id,
+        clientName: client.name,
         date: order.date,
         regularQuantity: 0,
         lunchboxQuantity: 0,
@@ -417,6 +429,29 @@ export function getMonthlySettlementDailyQuantities(
       current.finalQuantity += quantity;
       daily.set(order.date, current);
     });
+
+    return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
+  });
+}
+
+export function getMonthlySettlementDailyQuantities(
+  state: AppState,
+  settlementAccountId: string,
+  month: string
+): SettlementDailyQuantity[] {
+  const daily = new Map<string, SettlementDailyQuantity>();
+
+  getMonthlySettlementDailyQuantitiesByLocation(state, settlementAccountId, month).forEach((item) => {
+    const current = daily.get(item.date) ?? {
+      date: item.date,
+      regularQuantity: 0,
+      lunchboxQuantity: 0,
+      finalQuantity: 0
+    };
+    current.regularQuantity += item.regularQuantity;
+    current.lunchboxQuantity += item.lunchboxQuantity;
+    current.finalQuantity += item.finalQuantity;
+    daily.set(item.date, current);
   });
 
   return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));

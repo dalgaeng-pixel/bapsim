@@ -28,7 +28,7 @@ This file is the first stop for the next agent or developer continuing the proje
 - **Simple No-Meal Rules**: Monthly last-day, monthly day, and one-off date no-meal rules are stored through the existing `holidays` table using an encoded JSON payload in `name`. This avoids an immediate Supabase table migration while preserving structured parsing in `lib/schedule.ts`.
 - **Meal Supply Type**: Each client has a `mealSupplyType` of `regular` or `lunchbox`. Admin overview totals, delivery CSV, monthly settlement rows, and client/admin profile displays split or label regular meal counts vs personal lunchboxes. The value is persisted in the same encoded internal client settings row in `holidays`.
 - **Delivery Start Date**: Each client has a `deliveryStartDate`. Admins can enter meal defaults before actual service starts, but delivery tables and monthly settlement include orders only on/after that start date. The value is persisted as an encoded internal settings row in `holidays`, avoiding an immediate `clients` table migration.
-- **Daily Monthly Settlement & Pricing**: Monthly settlement now shows and exports one daily row per settlement account, followed by a monthly final row. The default unit price is 8,000 KRW; a monthly, account-level price is stored independently from the optional final-quantity override so daily quantities remain automatic when only price changes. Run `docs/supabase-monthly-settlement-pricing-migration.sql` before using persistent price edits in Supabase.
+- **Daily Monthly Settlement & Pricing**: Monthly settlement now lists and exports every delivery location by day, adds a location subtotal, and finishes each settlement account with one monthly final row. The default unit price is 8,000 KRW; a monthly, account-level price is stored independently from the optional final-quantity override so daily quantities remain automatic when only price changes. All Excel buttons generate a real `.xlsx` file with width sized from Korean and Latin text length. Run `docs/supabase-monthly-settlement-pricing-migration.sql` before using persistent price edits in Supabase.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
 - **Mobile Layout Optimization**: Prevented horizontal scrolling issues by removing fixed minimum widths (`min-w-[...]`) from tables, hiding non-essential columns on mobile, and ensuring long addresses wrap correctly with `break-all`.
 - **Settlement Accounts & Contact Access Groups**: Delivery locations remain `clients`, while `settlement_accounts` controls admin-only monthly aggregation and `contact_access_groups` + members controls one shared customer link/PIN for one or more permitted locations. Delivery stays location based; monthly CSV and settlement rows are account based.
@@ -72,9 +72,10 @@ Expected current result:
 
 ## Key Files
 
-- `components/admin-dashboard.tsx`: admin UI, tabs, client management, delivery table, CSV actions.
+- `components/admin-dashboard.tsx`: admin UI, tabs, client management, monthly settlement, XLSX actions, and dedicated four-cards-per-A4 delivery print window.
 - `components/client-app.tsx`: customer PIN login, multi-location selection for an authorized contact group, quantity change, rejection, profile change requests.
-- `lib/schedule.ts`: shared scheduling rules for lunch/dinner defaults, weekday quantities, virtual daily orders, and no-meal exception rules.
+- `lib/schedule.ts`: shared scheduling rules for lunch/dinner defaults, weekday quantities, virtual daily orders, no-meal exception rules, and location-level monthly settlement quantities.
+- `lib/export.ts`: standard XLSX writer with saved column widths; used by all Excel download actions.
 - `lib/push-client.ts`: browser push support detection, permission handling, push subscribe/unsubscribe toggle.
 - `lib/use-bapsim-store.ts`: main client-side state store, calculating state diffs including deleted IDs and syncing via Server Action.
 - `lib/supabase-state.ts`: maps app camelCase state to Supabase snake_case rows, including settlement accounts, contact access groups, members, and group settlement adjustments.

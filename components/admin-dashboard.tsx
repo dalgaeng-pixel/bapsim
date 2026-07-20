@@ -40,7 +40,7 @@ import {
   togglePushNotifications,
   type PushNotificationStatus
 } from "@/lib/push-client";
-import { buildDeliveryRows, buildMonthlyRows, downloadCsv } from "@/lib/export";
+import { buildDeliveryRows, buildMonthlyRows, downloadExcel } from "@/lib/export";
 import { formatKoreanDate, isPastCutoffForDate, todayKey } from "@/lib/date";
 import { orderStatusClass, orderStatusLabel, requestTypeLabel } from "@/lib/status";
 import { useBapsimStore } from "@/lib/use-bapsim-store";
@@ -50,7 +50,7 @@ import {
   enabledMealTypes,
   getWeeklyQuantitiesForClient,
   getClientMealSupplyType,
-  getMonthlySettlementDailyQuantities,
+  getMonthlySettlementDailyQuantitiesByLocation,
   getMonthlySettlementForClient,
   getMonthlySettlementForSettlementAccount,
   DEFAULT_MEAL_UNIT_PRICE,
@@ -193,14 +193,68 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
     }
   );
   const printDeliveryCards = () => {
-    const clearPrintLayout = () => {
-      delete document.body.dataset.printLayout;
-      window.removeEventListener("afterprint", clearPrintLayout);
-    };
+    if (deliveryOrders.length === 0) {
+      window.alert("인쇄할 배달 대상이 없습니다.");
+      return;
+    }
 
-    document.body.dataset.printLayout = "delivery";
-    window.addEventListener("afterprint", clearPrintLayout, { once: true });
-    window.requestAnimationFrame(() => window.print());
+    const printWindow = window.open("", "bapsim-delivery-print", "popup=yes,width=960,height=1200");
+    if (!printWindow) {
+      window.alert("인쇄 창을 열 수 없습니다. 브라우저 팝업 차단을 해제한 뒤 다시 시도하세요.");
+      return;
+    }
+
+    const escapeHtml = (value: string | number | undefined) =>
+      String(value ?? "").replace(/[&<>'"]/g, (character) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;"
+      })[character] ?? character);
+    const cards = deliveryOrders.map((order, index) => {
+      const client = store.getClient(order.clientId);
+      const address = [client?.address, client?.addressDetail].filter(Boolean).join(" ");
+      return `
+        <article class="card">
+          <header><div><p class="brand">밥심 식사배달관리</p><h1>배달 전표</h1></div><strong>순서 ${index + 1}</strong></header>
+          <p class="date">${escapeHtml(formatKoreanDate(selectedDate))} · ${escapeHtml(selectedMealType?.name ?? "식사")}</p>
+          <dl>
+            <div><dt>업체</dt><dd>${escapeHtml(client?.name)}</dd></div>
+            <div><dt>수량</dt><dd class="quantity">${order.finalQuantity}개</dd></div>
+            <div><dt>주소</dt><dd>${escapeHtml(address)}</dd></div>
+            <div><dt>메모</dt><dd>${escapeHtml(client?.deliveryMemo || "-")}</dd></div>
+          </dl>
+        </article>`;
+    });
+    const pages = Array.from({ length: Math.ceil(cards.length / 4) }, (_, index) => {
+      const pageCards = cards.slice(index * 4, index * 4 + 4);
+      return `<section class="page">${[...pageCards, ...Array(Math.max(0, 4 - pageCards.length)).fill('<article class="card blank"></article>')].join("")}</section>`;
+    }).join("");
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>밥심 배달표</title><style>
+      @page { size: A4 portrait; margin: 8mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #1c1917; font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+      .page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); width: 194mm; min-height: 281mm; break-after: page; page-break-after: always; }
+      .page:last-child { break-after: auto; page-break-after: auto; }
+      .card { min-width: 0; min-height: 0; overflow: hidden; border: 1px dashed #78716c; padding: 6mm; }
+      header { display: flex; align-items: flex-start; justify-content: space-between; gap: 4mm; border-bottom: 1px solid #1c1917; padding-bottom: 3mm; }
+      .brand, header strong, .date, dt { margin: 0; color: #57534e; font-size: 9pt; font-weight: 700; }
+      h1 { margin: 1mm 0 0; font-size: 18pt; line-height: 1.1; }
+      .date { margin-top: 4mm; }
+      dl { display: grid; gap: 3mm; margin: 5mm 0 0; }
+      dl div { display: grid; grid-template-columns: 17mm minmax(0, 1fr); gap: 3mm; }
+      dd { margin: 0; font-size: 12pt; font-weight: 800; overflow-wrap: anywhere; }
+      .quantity { color: #c8191f; font-size: 22pt; line-height: 1; }
+    </style></head><body>${pages}</body></html>`);
+    printWindow.document.close();
+    printWindow.addEventListener("afterprint", () => printWindow.close(), { once: true });
+    window.setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 250);
   };
   const totals = visibleOrders.reduce(
     (result, order) => {
@@ -429,7 +483,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   <button
                     className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
                     onClick={() =>
-                      downloadCsv("bapsim-delivery.csv", buildDeliveryRows(state, deliveryOrders))
+                      void downloadExcel(`bapsim-delivery-${selectedDate}.xlsx`, buildDeliveryRows(state, deliveryOrders))
                     }
                   >
                     <Download size={16} />
@@ -545,7 +599,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
           ) : null}
 
           {tab === "delivery" ? (
-            <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft print-surface delivery-print-panel">
+            <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft print-surface">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
                   <h2 className="text-xl font-black">배달표</h2>
@@ -557,7 +611,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   <button
                     className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
                     onClick={() =>
-                      downloadCsv("bapsim-delivery.csv", buildDeliveryRows(state, deliveryOrders))
+                      void downloadExcel(`bapsim-delivery-${selectedDate}.xlsx`, buildDeliveryRows(state, deliveryOrders))
                     }
                   >
                     <Download size={16} />
@@ -572,12 +626,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   </button>
                 </div>
               </div>
-              <DeliveryPrintSheet
-                date={selectedDate}
-                mealName={selectedMealType?.name ?? "식사"}
-                orders={deliveryOrders}
-                getClient={store.getClient}
-              />              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
@@ -675,7 +724,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   <button
                     className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
                     onClick={() =>
-                      downloadCsv(`bapsim-monthly-${selectedMonth}.csv`, buildMonthlyRows(state, selectedMonth))
+                      void downloadExcel(`bapsim-monthly-${selectedMonth}.xlsx`, buildMonthlyRows(state, selectedMonth))
                     }
                   >
                     <Download size={16} />
@@ -694,7 +743,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">정산 업체</th>
                       <th>배송 장소</th>
-                      <th className="min-w-40">일별 식수</th>
+                      <th className="min-w-52">일별 식수</th>
                       <th className="hidden lg:table-cell">기본</th>
                       <th className="hidden lg:table-cell">자동 최종</th>
                       <th>월 최종</th>
@@ -969,7 +1018,7 @@ function SettlementMonthlyRow({
   const [unitPrice, setUnitPrice] = useState(String(settlement.unitPrice));
   const [memo, setMemo] = useState(settlement.adjustment?.memo ?? "");
   const pricingReady = store.storageMode === "local" || store.state.settlementPricingStorageReady;
-  const dailyQuantities = getMonthlySettlementDailyQuantities(store.state, account.id, month);
+  const dailyQuantities = getMonthlySettlementDailyQuantitiesByLocation(store.state, account.id, month);
 
   useEffect(() => {
     setQuantity(String(settlement.settlementFinalQuantity));
@@ -1000,9 +1049,10 @@ function SettlementMonthlyRow({
         {dailyQuantities.length ? (
           <div className="space-y-1 text-xs font-bold text-stone-700">
             {dailyQuantities.map((daily) => (
-              <div key={daily.date} className="flex items-center justify-between gap-2">
+              <div key={`${daily.clientId}:${daily.date}`} className="grid grid-cols-[minmax(0,1fr)_10mm_12mm] gap-1">
+                <span className="truncate">{daily.clientName}</span>
                 <span>{daily.date.slice(5).replace("-", "/")}</span>
-                <span>{daily.finalQuantity}개</span>
+                <span className="text-right">{daily.finalQuantity}개</span>
               </div>
             ))}
           </div>
@@ -1036,58 +1086,6 @@ function SettlementMonthlyRow({
   );
 }
 
-function DeliveryPrintSheet({
-  date,
-  mealName,
-  orders,
-  getClient
-}: {
-  date: string;
-  mealName: string;
-  orders: DailyMealOrder[];
-  getClient: (clientId: string) => Client | undefined;
-}) {
-  const pages = orders.reduce<DailyMealOrder[][]>((result, order, index) => {
-    const pageIndex = Math.floor(index / 4);
-    result[pageIndex] ??= [];
-    result[pageIndex].push(order);
-    return result;
-  }, []);
-
-  return (
-    <div className="delivery-print-sheet" aria-hidden="true">
-      {pages.map((page, pageIndex) => (
-        <section key={`${date}:${mealName}:${pageIndex}`} className="delivery-print-page">
-          {[...page, ...Array<DailyMealOrder | null>(Math.max(0, 4 - page.length)).fill(null)].map((order, cardIndex) => {
-            const client = order ? getClient(order.clientId) : undefined;
-            return (
-              <article key={order?.id ?? `blank-${pageIndex}-${cardIndex}`} className={`delivery-print-card${order ? "" : " delivery-print-card--blank"}`}>
-                {order ? (
-                  <>
-                    <div className="delivery-print-card__header">
-                      <div>
-                        <p className="delivery-print-card__brand">밥심 식사배달관리</p>
-                        <p className="delivery-print-card__title">배달 전표</p>
-                      </div>
-                      <p className="delivery-print-card__order">순서 {pageIndex * 4 + cardIndex + 1}</p>
-                    </div>
-                    <p className="delivery-print-card__date">{formatKoreanDate(date)} · {mealName}</p>
-                    <dl className="delivery-print-card__details">
-                      <div><dt>업체</dt><dd>{client?.name}</dd></div>
-                      <div><dt>수량</dt><dd className="delivery-print-card__quantity">{order.finalQuantity}개</dd></div>
-                      <div className="delivery-print-card__address"><dt>주소</dt><dd>{client?.address}{client?.addressDetail ? ` ${client.addressDetail}` : ""}</dd></div>
-                      <div className="delivery-print-card__memo"><dt>메모</dt><dd>{client?.deliveryMemo || "-"}</dd></div>
-                    </dl>
-                  </>
-                ) : null}
-              </article>
-            );
-          })}
-        </section>
-      ))}
-    </div>
-  );
-}
 
 type ClientFormState = Pick<
   Client,
