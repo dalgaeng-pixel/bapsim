@@ -11,6 +11,7 @@ import {
   getBaseQuantity,
   getMonthlySettlementForClient,
   getMonthlySettlementForSettlementAccount,
+  DEFAULT_MEAL_UNIT_PRICE,
   getOrderForSlot,
   getOrdersForDate,
   normalizeAppState,
@@ -110,6 +111,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   }
 
   diff.groupStorageReady = next.groupStorageReady;
+  diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
 
   // Handle deliveryOverrides (Record<string, string[]>)
   const overridesDiff: Record<string, string[]> = {};
@@ -829,7 +831,12 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
   );
 
   const updateSettlementMonthlyAdjustment = useCallback(
-    (settlementAccountId: string, month: string, finalQuantity: number, memo: string, adminName: string) => {
+    (
+      settlementAccountId: string,
+      month: string,
+      input: { finalQuantity: number; unitPrice: number; memo: string },
+      adminName: string
+    ) => {
       commit((previous) => {
         const account = previous.settlementAccounts.find((item) => item.id === settlementAccountId);
         if (!account) {
@@ -838,10 +845,15 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
 
         const settlement = getMonthlySettlementForSettlementAccount(previous, settlementAccountId, month);
         const existing = settlement.adjustment;
-        const normalizedFinalQuantity = Math.max(0, Math.floor(Number(finalQuantity) || 0));
-        const normalizedMemo = memo.trim();
-        const shouldRemove =
-          normalizedFinalQuantity === settlement.locationAdjustedFinalQuantity && normalizedMemo.length === 0;
+        const normalizedFinalQuantity = Math.max(0, Math.floor(Number(input.finalQuantity) || 0));
+        const normalizedUnitPrice = previous.settlementPricingStorageReady
+          ? Math.max(0, Math.floor(Number(input.unitPrice) || 0))
+          : DEFAULT_MEAL_UNIT_PRICE;
+        const normalizedMemo = input.memo.trim();
+        const hasQuantityOverride = normalizedFinalQuantity !== settlement.locationAdjustedFinalQuantity;
+        const hasCustomUnitPrice =
+          previous.settlementPricingStorageReady && normalizedUnitPrice !== DEFAULT_MEAL_UNIT_PRICE;
+        const shouldRemove = !hasQuantityOverride && !hasCustomUnitPrice && normalizedMemo.length === 0;
         const monthlyAdjustments = shouldRemove
           ? previous.monthlyAdjustments.filter((item) => item.id !== existing?.id)
           : existing
@@ -849,7 +861,8 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
                 item.id === existing.id
                   ? {
                       ...item,
-                      finalQuantity: normalizedFinalQuantity,
+                      finalQuantity: hasQuantityOverride ? normalizedFinalQuantity : undefined,
+                      unitPrice: previous.settlementPricingStorageReady ? normalizedUnitPrice : undefined,
                       memo: normalizedMemo || undefined,
                       updatedAt: new Date().toISOString()
                     }
@@ -861,7 +874,8 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
                   id: id("settlement-adjustment"),
                   month,
                   settlementAccountId,
-                  finalQuantity: normalizedFinalQuantity,
+                  finalQuantity: hasQuantityOverride ? normalizedFinalQuantity : undefined,
+                  unitPrice: previous.settlementPricingStorageReady ? normalizedUnitPrice : undefined,
                   memo: normalizedMemo || undefined,
                   updatedAt: new Date().toISOString()
                 }
@@ -876,7 +890,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
               action: "update_monthly_adjustment",
               adminName,
               targetLabel: account.name,
-              detail: `${month} 월별 집계 정산 수량 수정`,
+              detail: `${month} 월별 집계 정산 수량 또는 단가 수정`,
               createdAt: new Date().toISOString()
             },
             ...previous.auditLogs

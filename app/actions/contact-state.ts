@@ -75,7 +75,8 @@ export async function syncContactAccessGroupDiffAction(
 
     await saveAppStateDiffToSupabase(supabase, {
       ...diff,
-      groupStorageReady: false
+      groupStorageReady: false,
+      settlementPricingStorageReady: false
     });
 
     const adminNotifications = (diff.notifications ?? []).filter(

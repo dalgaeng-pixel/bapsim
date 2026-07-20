@@ -41,6 +41,8 @@ const CLIENT_SETTINGS_PREFIX = "__BAPSIM_CLIENT_SETTINGS__:";
 const CLIENT_SETTINGS_DATE = "1900-01-01";
 const MONTHLY_ADJUSTMENT_PREFIX = "__BAPSIM_MONTHLY_ADJUSTMENT__:";
 
+export const DEFAULT_MEAL_UNIT_PRICE = 8000;
+
 export type WeeklyQuantities = Record<string, Record<number, number>>;
 
 export const MEAL_SUPPLY_TYPE_LABELS: Record<MealSupplyType, string> = {
@@ -125,6 +127,7 @@ export function normalizeAppState(state: AppState): AppState {
     ...state,
     ...grouping,
     groupStorageReady: state.groupStorageReady === true,
+    settlementPricingStorageReady: state.settlementPricingStorageReady !== false,
     mealTypes,
     defaultQuantities,
     orders: state.orders ?? [],
@@ -377,6 +380,48 @@ export function getSettlementAccountMonthlyAdjustment(
   );
 }
 
+export type SettlementDailyQuantity = {
+  date: string;
+  regularQuantity: number;
+  lunchboxQuantity: number;
+  finalQuantity: number;
+};
+
+export function getMonthlySettlementDailyQuantities(
+  state: AppState,
+  settlementAccountId: string,
+  month: string
+): SettlementDailyQuantity[] {
+  const settlement = getMonthlySettlementForSettlementAccount(state, settlementAccountId, month);
+  const daily = new Map<string, SettlementDailyQuantity>();
+
+  settlement.clientSettlements.forEach((clientSettlement, index) => {
+    const supplyType = getClientMealSupplyType(settlement.clients[index]);
+    clientSettlement.orders.forEach((order) => {
+      const quantity = Math.max(0, order.finalQuantity);
+      if (quantity === 0) {
+        return;
+      }
+
+      const current = daily.get(order.date) ?? {
+        date: order.date,
+        regularQuantity: 0,
+        lunchboxQuantity: 0,
+        finalQuantity: 0
+      };
+      if (supplyType === "lunchbox") {
+        current.lunchboxQuantity += quantity;
+      } else {
+        current.regularQuantity += quantity;
+      }
+      current.finalQuantity += quantity;
+      daily.set(order.date, current);
+    });
+  });
+
+  return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
+}
+
 export function getMonthlySettlementForSettlementAccount(
   state: AppState,
   settlementAccountId: string,
@@ -406,6 +451,7 @@ export function getMonthlySettlementForSettlementAccount(
     computedFinalQuantity,
     locationAdjustedFinalQuantity,
     settlementFinalQuantity: adjustment?.finalQuantity ?? locationAdjustedFinalQuantity,
+    unitPrice: adjustment?.unitPrice ?? DEFAULT_MEAL_UNIT_PRICE,
     rejectedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.rejectedCount, 0),
     changedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.changedCount, 0)
   };

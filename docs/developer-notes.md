@@ -28,7 +28,7 @@ This file is the first stop for the next agent or developer continuing the proje
 - **Simple No-Meal Rules**: Monthly last-day, monthly day, and one-off date no-meal rules are stored through the existing `holidays` table using an encoded JSON payload in `name`. This avoids an immediate Supabase table migration while preserving structured parsing in `lib/schedule.ts`.
 - **Meal Supply Type**: Each client has a `mealSupplyType` of `regular` or `lunchbox`. Admin overview totals, delivery CSV, monthly settlement rows, and client/admin profile displays split or label regular meal counts vs personal lunchboxes. The value is persisted in the same encoded internal client settings row in `holidays`.
 - **Delivery Start Date**: Each client has a `deliveryStartDate`. Admins can enter meal defaults before actual service starts, but delivery tables and monthly settlement include orders only on/after that start date. The value is persisted as an encoded internal settings row in `holidays`, avoiding an immediate `clients` table migration.
-- **Editable Monthly Settlement**: The monthly tab now has a month selector and editable settlement final quantity per client. Default meal quantities are included automatically up to the current date and per-meal cutoff; original daily orders stay unchanged; manual settlement overrides are stored as `monthlyAdjustments` and persisted as encoded internal rows in `holidays`.
+- **Daily Monthly Settlement & Pricing**: Monthly settlement now shows and exports one daily row per settlement account, followed by a monthly final row. The default unit price is 8,000 KRW; a monthly, account-level price is stored independently from the optional final-quantity override so daily quantities remain automatic when only price changes. Run `docs/supabase-monthly-settlement-pricing-migration.sql` before using persistent price edits in Supabase.
 - **Client App Security (Dynamic Routing & Isolation)**: The generic `/client` route was replaced by a dynamic route `/client/[code]`. The server securely filters the global state and injects **only the specific client's data** into the browser. It is now impossible for one client to access another client's data.
 - **Mobile Layout Optimization**: Prevented horizontal scrolling issues by removing fixed minimum widths (`min-w-[...]`) from tables, hiding non-essential columns on mobile, and ensuring long addresses wrap correctly with `break-all`.
 - **Settlement Accounts & Contact Access Groups**: Delivery locations remain `clients`, while `settlement_accounts` controls admin-only monthly aggregation and `contact_access_groups` + members controls one shared customer link/PIN for one or more permitted locations. Delivery stays location based; monthly CSV and settlement rows are account based.
@@ -81,11 +81,13 @@ Expected current result:
 - `app/actions/state.ts`: Admin state diff Server Action.
 - `app/actions/contact-state.ts`: customer contact diff Server Action with code/PIN and assigned-location verification.
 - `components/group-manager.tsx`: admin settlement-account and contact-access-group management UI.
+- `app/globals.css`: delivery print layout; delivery cards render four per A4 page with cut lines only when the delivery print button is used.
 - `lib/contact-groups.ts`: group membership, legacy fallback, and client-state filtering helpers.
 - `app/client/[code]/page.tsx`: Dynamic route resolving an active contact access group and injecting only its assigned delivery locations.
 - `app/admin/page.tsx`: SSR entry point for the Admin Dashboard.
 - `docs/supabase-schema.sql`: Supabase table schema for a new project.
 - `docs/supabase-contact-groups-migration.sql`: required one-time migration for the existing production project.
+- `docs/supabase-monthly-settlement-pricing-migration.sql`: required one-time migration before per-month unit prices can be persisted.
 - `docs/supabase-rls-policies.sql`: RLS policies and service_role grants (applied).
 
 ## Data Model Summary
@@ -102,7 +104,7 @@ The app state currently contains:
 - `settlementAccounts`: billing and monthly-aggregation accounts, each with one or more delivery locations.
 - `contactAccessGroups`: customer-facing link/PIN accounts and their assigned manager details.
 - `contactAccessGroupMembers`: explicit allowed delivery locations per contact access group.
-- `monthlyAdjustments`: admin-only monthly settlement overrides by client/month or settlement account/month.
+- `monthlyAdjustments`: admin-only monthly settlement quantity overrides and settlement-account monthly unit prices; default unit price is 8,000 KRW.
 - `notifications`: in-app notification records.
 - `auditLogs`: important admin action history.
 - `deliveryOverrides`: per-day temporary delivery ordering.
@@ -115,6 +117,7 @@ The app state currently contains:
 - After migration: create `한울상사` in `정산/담당자`, edit management office, warehouse, print room 1, and print room 3 to select that settlement account, then create one contact group for print rooms 1 and 3. Their former individual-group access is reassigned to the shared group.
 - Delivery tables remain location based. Monthly settlement and CSV export aggregate by settlement account.
 - 정산/담당자 deletion is guarded: reassign every delivery location before deleting a settlement account or contact group. Deleting an unassigned settlement account also deletes only its manual monthly settlement adjustments; deleting an unassigned contact group permanently invalidates its link and PIN.
+- Required operation after deploying this change: run `docs/supabase-monthly-settlement-pricing-migration.sql` once in the production Supabase SQL Editor, then reload `/admin` to enable monthly price edits.
 - `npm run typecheck` and `npm run build` passed after implementation. `npm run test:supabase` was not run because it performs an external service-role credential check.
 
 ## Next Recommended Work

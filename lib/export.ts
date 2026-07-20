@@ -1,6 +1,6 @@
 import type { AppState, DailyMealOrder } from "@/lib/types";
 import { todayKey } from "@/lib/date";
-import { getMonthlySettlementForSettlementAccount, mealSupplyTypeLabel } from "@/lib/schedule";
+import { getMonthlySettlementDailyQuantities, getMonthlySettlementForSettlementAccount, mealSupplyTypeLabel } from "@/lib/schedule";
 
 function csvEscape(value: string | number | undefined) {
   const text = String(value ?? "");
@@ -41,30 +41,37 @@ export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
 
 export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)) {
   return [
-    ["월", "정산 업체", "배송 장소", "기본 수량 합계", "자동 최종", "정산 최종", "일반 식수", "개인도시락", "거절 건수", "변경 건수", "정산 메모"],
-    ...state.settlementAccounts.map((account) => {
+    ["구분", "정산 업체", "일자", "일반 식수", "개인도시락", "일일 합계", "월 최종 식수", "단가", "금액", "정산 메모"],
+    ...state.settlementAccounts.flatMap((account) => {
       const settlement = getMonthlySettlementForSettlementAccount(state, account.id, month);
-      const regularQuantity = settlement.clientSettlements.reduce(
-        (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "regular" ? item.settlementFinalQuantity : 0),
-        0
-      );
-      const lunchboxQuantity = settlement.clientSettlements.reduce(
-        (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "lunchbox" ? item.settlementFinalQuantity : 0),
-        0
-      );
+      const dailyQuantities = getMonthlySettlementDailyQuantities(state, account.id, month);
+      const totalAmount = settlement.settlementFinalQuantity * settlement.unitPrice;
 
       return [
-        month,
-        account.name,
-        settlement.clients.map((client) => client.name).join(" · "),
-        settlement.computedBaseQuantity,
-        settlement.computedFinalQuantity,
-        settlement.settlementFinalQuantity,
-        regularQuantity,
-        lunchboxQuantity,
-        settlement.rejectedCount,
-        settlement.changedCount,
-        settlement.adjustment?.memo
+        ...dailyQuantities.map((daily) => [
+          "일별",
+          account.name,
+          daily.date,
+          daily.regularQuantity,
+          daily.lunchboxQuantity,
+          daily.finalQuantity,
+          "",
+          "",
+          "",
+          ""
+        ]),
+        [
+          "월 최종",
+          account.name,
+          "",
+          "",
+          "",
+          "",
+          settlement.settlementFinalQuantity,
+          settlement.unitPrice,
+          totalAmount,
+          settlement.adjustment?.memo
+        ]
       ];
     })
   ];

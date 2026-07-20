@@ -70,7 +70,8 @@ type MonthlySettlementAdjustmentRow = {
   id: string;
   month: string;
   settlement_account_id: string;
-  final_quantity: number;
+  final_quantity: number | null;
+  unit_price?: number | null;
   memo: string | null;
   updated_at: string;
 };
@@ -197,6 +198,19 @@ async function selectOptionalRows<T>(client: SupabaseClient, table: string): Pro
 
   throw new Error(`${table}: ${error.message}`);
 }
+async function hasOptionalColumn(client: SupabaseClient, table: string, column: string): Promise<boolean> {
+  const { error } = await client.from(table).select(column).limit(1);
+
+  if (!error) {
+    return true;
+  }
+
+  if (error.code === "42P01" || error.code === "42703" || /does not exist|schema cache|could not find.*column/i.test(error.message)) {
+    return false;
+  }
+
+  throw new Error(`${table}.${column}: ${error.message}`);
+}
 
 function toClientRow(item: Client, includeSettlementAccount: boolean) {
   const row = {
@@ -264,7 +278,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     settlementAccountRows,
     contactAccessGroupRows,
     contactAccessGroupMemberRows,
-    settlementAdjustmentRows
+    settlementAdjustmentRows,
+    settlementPricingStorageReady
   ] = await Promise.all([
     selectRows<ClientRow>(client, "clients"),
     selectRows<MealTypeRow>(client, "meal_types"),
@@ -279,7 +294,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     selectOptionalRows<SettlementAccountRow>(client, "settlement_accounts"),
     selectOptionalRows<ContactAccessGroupRow>(client, "contact_access_groups"),
     selectOptionalRows<ContactAccessGroupMemberRow>(client, "contact_access_group_members"),
-    selectOptionalRows<MonthlySettlementAdjustmentRow>(client, "monthly_settlement_adjustments")
+    selectOptionalRows<MonthlySettlementAdjustmentRow>(client, "monthly_settlement_adjustments"),
+    hasOptionalColumn(client, "monthly_settlement_adjustments", "unit_price")
   ]);
 
   const deliveryOverrides = Object.fromEntries(
@@ -299,7 +315,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       id: row.id,
       month: row.month.slice(0, 7),
       settlementAccountId: row.settlement_account_id,
-      finalQuantity: row.final_quantity,
+      finalQuantity: row.final_quantity ?? undefined,
+      unitPrice: row.unit_price ?? undefined,
       memo: row.memo ?? undefined,
       updatedAt: row.updated_at
     }))
@@ -348,6 +365,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       clientId: row.client_id
     })),
     groupStorageReady,
+    settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
     mealTypes: mealTypeRows.map((row): MealType => ({
       id: row.id,
       name: row.name,
@@ -451,7 +469,8 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     notifications: state.notifications,
     auditLogs: state.auditLogs,
     deliveryOverrides: state.deliveryOverrides,
-    groupStorageReady: state.groupStorageReady
+    groupStorageReady: state.groupStorageReady,
+    settlementPricingStorageReady: state.settlementPricingStorageReady
   });
 }
 
@@ -476,6 +495,7 @@ export type AppStateDiff = {
   contactAccessGroups?: ContactAccessGroup[];
   contactAccessGroupMembers?: ContactAccessGroupMember[];
   groupStorageReady?: boolean;
+  settlementPricingStorageReady?: boolean;
   mealTypes?: MealType[];
   defaultQuantities?: DefaultMealQuantity[];
   orders?: DailyMealOrder[];
@@ -491,6 +511,7 @@ export type AppStateDiff = {
 
 export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: AppStateDiff) {
   const groupStorageReady = diff.groupStorageReady === true;
+  const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
   if (diff.deleted) {
     await deleteRows(client, "order_change_logs", diff.deleted.orderChangeLogs ?? []);
     await deleteRows(client, "change_requests", diff.deleted.changeRequests ?? []);
@@ -687,7 +708,12 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
           id: item.id,
           month: `${item.month}-01`,
           settlement_account_id: item.settlementAccountId,
-          final_quantity: item.finalQuantity,
+          ...(settlementPricingStorageReady
+            ? {
+                final_quantity: item.finalQuantity ?? null,
+                unit_price: item.unitPrice ?? 8000
+              }
+            : { final_quantity: item.finalQuantity ?? 0 }),
           memo: item.memo ?? null,
           updated_at: item.updatedAt
         }))

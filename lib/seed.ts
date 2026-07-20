@@ -195,6 +195,7 @@ export function createInitialState(): AppState {
       clientId: client.id
     })),
     groupStorageReady: true,
+    settlementPricingStorageReady: true,
     mealTypes,
     defaultQuantities,
     orders,

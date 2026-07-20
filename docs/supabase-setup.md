@@ -32,6 +32,14 @@ in Supabase SQL Editor once. This migration preserves every existing client link
 
 After it succeeds, reload `/admin` and use `정산/담당자` to create or combine groups. Do not use the new group UI before this migration is applied.
 
+To enable monthly settlement prices, then run the full contents of:
+
+```sql
+-- docs/supabase-monthly-settlement-pricing-migration.sql
+```
+
+once in Supabase SQL Editor. It adds the per-settlement-account, per-month unit price column and lets a monthly price change remain separate from the calculated meal quantity.
+
 ## 4. Auth plan
 
 Admin login should use phone OTP. Supabase JS supports client initialization with `createClient` and OTP login through `signInWithOtp`.

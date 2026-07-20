@@ -155,7 +155,8 @@ export interface MonthlyAdjustment {
   month: string;
   clientId?: string;
   settlementAccountId?: string;
-  finalQuantity: number;
+  finalQuantity?: number;
+  unitPrice?: number;
   memo?: string;
   updatedAt: string;
 }
@@ -185,6 +186,7 @@ export interface AppState {
   contactAccessGroups: ContactAccessGroup[];
   contactAccessGroupMembers: ContactAccessGroupMember[];
   groupStorageReady: boolean;
+  settlementPricingStorageReady: boolean;
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
   orders: DailyMealOrder[];

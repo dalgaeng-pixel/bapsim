@@ -50,8 +50,10 @@ import {
   enabledMealTypes,
   getWeeklyQuantitiesForClient,
   getClientMealSupplyType,
+  getMonthlySettlementDailyQuantities,
   getMonthlySettlementForClient,
   getMonthlySettlementForSettlementAccount,
+  DEFAULT_MEAL_UNIT_PRICE,
   isClientStartedOnDate,
   mealSupplyTypeLabel,
   MEAL_SUPPLY_TYPE_LABELS,
@@ -136,6 +138,10 @@ function mapUrl(address: string) {
   return `https://map.naver.com/v5/search/${encodeURIComponent(address)}`;
 }
 
+function formatWon(value: number) {
+  return `${new Intl.NumberFormat("ko-KR").format(value)}원`;
+}
+
 export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const store = useBapsimStore(initialState);
   const [tab, setTab] = useState<TabId>("overview");
@@ -186,6 +192,16 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       );
     }
   );
+  const printDeliveryCards = () => {
+    const clearPrintLayout = () => {
+      delete document.body.dataset.printLayout;
+      window.removeEventListener("afterprint", clearPrintLayout);
+    };
+
+    document.body.dataset.printLayout = "delivery";
+    window.addEventListener("afterprint", clearPrintLayout, { once: true });
+    window.requestAnimationFrame(() => window.print());
+  };
   const totals = visibleOrders.reduce(
     (result, order) => {
       if (order.status === "rejected" || order.status === "holiday") {
@@ -529,7 +545,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
           ) : null}
 
           {tab === "delivery" ? (
-            <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft print-surface">
+            <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft print-surface delivery-print-panel">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
                   <h2 className="text-xl font-black">배달표</h2>
@@ -549,14 +565,19 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   </button>
                   <button
                     className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
-                    onClick={() => window.print()}
+                    onClick={printDeliveryCards}
                   >
                     <Printer size={16} />
                     인쇄
                   </button>
                 </div>
               </div>
-              <div className="mt-4 overflow-x-auto">
+              <DeliveryPrintSheet
+                date={selectedDate}
+                mealName={selectedMealType?.name ?? "식사"}
+                orders={deliveryOrders}
+                getClient={store.getClient}
+              />              <div className="mt-4 overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
@@ -662,18 +683,25 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   </button>
                 </div>
               </div>
+              {!state.settlementPricingStorageReady && store.storageMode !== "local" ? (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">
+                  월별 단가 저장을 사용하려면 Supabase SQL Editor에서 <code>docs/supabase-monthly-settlement-pricing-migration.sql</code>을 한 번 실행하세요. 수량 정산은 계속 저장할 수 있습니다.
+                </div>
+              ) : null}
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
                       <th className="py-3">정산 업체</th>
                       <th>배송 장소</th>
-                      <th className="hidden md:table-cell">식수 구성</th>
-                      <th className="hidden sm:table-cell">기본</th>
-                      <th className="hidden sm:table-cell">자동 최종</th>
-                      <th>정산 최종</th>
-                      <th className="hidden sm:table-cell">거절</th>
-                      <th className="hidden sm:table-cell">변경</th>
+                      <th className="min-w-40">일별 식수</th>
+                      <th className="hidden lg:table-cell">기본</th>
+                      <th className="hidden lg:table-cell">자동 최종</th>
+                      <th>월 최종</th>
+                      <th>단가</th>
+                      <th>금액</th>
+                      <th className="hidden lg:table-cell">거절</th>
+                      <th className="hidden lg:table-cell">변경</th>
                       <th className="min-w-48">메모</th>
                       <th>저장</th>
                     </tr>
@@ -938,27 +966,26 @@ function SettlementMonthlyRow({
   store: ReturnType<typeof useBapsimStore>;
 }) {
   const [quantity, setQuantity] = useState(String(settlement.settlementFinalQuantity));
+  const [unitPrice, setUnitPrice] = useState(String(settlement.unitPrice));
   const [memo, setMemo] = useState(settlement.adjustment?.memo ?? "");
+  const pricingReady = store.storageMode === "local" || store.state.settlementPricingStorageReady;
+  const dailyQuantities = getMonthlySettlementDailyQuantities(store.state, account.id, month);
 
   useEffect(() => {
     setQuantity(String(settlement.settlementFinalQuantity));
+    setUnitPrice(String(settlement.unitPrice));
     setMemo(settlement.adjustment?.memo ?? "");
-  }, [account.id, month, settlement.adjustment?.memo, settlement.settlementFinalQuantity]);
+  }, [account.id, month, settlement.adjustment?.memo, settlement.settlementFinalQuantity, settlement.unitPrice]);
 
   const parsedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const parsedUnitPrice = Math.max(0, Math.floor(Number(unitPrice) || 0));
   const normalizedMemo = memo.trim();
   const dirty =
     parsedQuantity !== settlement.settlementFinalQuantity ||
+    (pricingReady && parsedUnitPrice !== settlement.unitPrice) ||
     normalizedMemo !== (settlement.adjustment?.memo ?? "");
   const correction = settlement.settlementFinalQuantity - settlement.computedFinalQuantity;
-  const regularQuantity = settlement.clientSettlements.reduce(
-    (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "regular" ? item.settlementFinalQuantity : 0),
-    0
-  );
-  const lunchboxQuantity = settlement.clientSettlements.reduce(
-    (sum, item, index) => sum + (settlement.clients[index]?.mealSupplyType === "lunchbox" ? item.settlementFinalQuantity : 0),
-    0
-  );
+  const amount = parsedQuantity * parsedUnitPrice;
 
   return (
     <tr className="border-b border-stone-100 align-top">
@@ -967,30 +994,98 @@ function SettlementMonthlyRow({
         {correction !== 0 ? <p className="mt-1 text-xs font-bold text-bapsim-red">{correction > 0 ? `+${correction}` : correction}개 보정</p> : null}
       </td>
       <td className="py-3">
-        <p className="font-semibold text-stone-700">{settlement.clients.map((client) => client.name).join(" · ") || "배송 장소 없음"}</p>
+        <p className="font-semibold text-stone-700">{settlement.clients.map((client) => client.name).join(" · ") || "배달 장소 없음"}</p>
       </td>
-      <td className="hidden md:table-cell py-3 text-sm font-semibold text-stone-600">일반 {regularQuantity}개 · 도시락 {lunchboxQuantity}개</td>
-      <td className="hidden sm:table-cell py-3">{settlement.computedBaseQuantity}개</td>
-      <td className="hidden sm:table-cell py-3">{settlement.computedFinalQuantity}개</td>
+      <td className="py-3">
+        {dailyQuantities.length ? (
+          <div className="space-y-1 text-xs font-bold text-stone-700">
+            {dailyQuantities.map((daily) => (
+              <div key={daily.date} className="flex items-center justify-between gap-2">
+                <span>{daily.date.slice(5).replace("-", "/")}</span>
+                <span>{daily.finalQuantity}개</span>
+              </div>
+            ))}
+          </div>
+        ) : <span className="text-xs font-bold text-stone-400">배달 없음</span>}
+      </td>
+      <td className="hidden lg:table-cell py-3">{settlement.computedBaseQuantity}개</td>
+      <td className="hidden lg:table-cell py-3">{settlement.computedFinalQuantity}개</td>
       <td className="py-3">
         <input className="focus-ring w-24 rounded-md border border-stone-300 px-3 py-2 text-right text-sm font-black text-bapsim-red" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
       </td>
-      <td className="hidden sm:table-cell py-3">{settlement.rejectedCount}건</td>
-      <td className="hidden sm:table-cell py-3">{settlement.changedCount}건</td>
+      <td className="py-3">
+        <input className="focus-ring w-24 rounded-md border border-stone-300 px-3 py-2 text-right text-sm font-black" type="number" min={0} value={unitPrice} disabled={!pricingReady} onChange={(event) => setUnitPrice(event.target.value)} />
+      </td>
+      <td className="py-3 text-right font-black text-bapsim-red">{formatWon(amount)}</td>
+      <td className="hidden lg:table-cell py-3">{settlement.rejectedCount}건</td>
+      <td className="hidden lg:table-cell py-3">{settlement.changedCount}건</td>
       <td className="py-3">
         <input className="focus-ring w-full rounded-md border border-stone-300 px-3 py-2 text-sm" value={memo} placeholder="정산 보정 사유" onChange={(event) => setMemo(event.target.value)} />
       </td>
       <td className="py-3">
         <div className="flex gap-1">
-          <button className="focus-ring rounded-md bg-bapsim-red p-2 text-white disabled:bg-stone-300" title="정산 수정 저장" disabled={!dirty || quantity.trim() === ""} onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, parsedQuantity, normalizedMemo, adminName)}>
+          <button className="focus-ring rounded-md bg-bapsim-red p-2 text-white disabled:bg-stone-300" title="정산 수량·단가 저장" disabled={!dirty || quantity.trim() === "" || unitPrice.trim() === ""} onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, { finalQuantity: parsedQuantity, unitPrice: parsedUnitPrice, memo: normalizedMemo }, adminName)}>
             <Save size={16} />
           </button>
-          <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="장소별 자동 정산 수량으로 복원" onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, settlement.locationAdjustedFinalQuantity, "", adminName)}>
+          <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="수량과 단가를 기본값으로 복원" onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, { finalQuantity: settlement.locationAdjustedFinalQuantity, unitPrice: DEFAULT_MEAL_UNIT_PRICE, memo: "" }, adminName)}>
             <RotateCcw size={16} />
           </button>
         </div>
       </td>
     </tr>
+  );
+}
+
+function DeliveryPrintSheet({
+  date,
+  mealName,
+  orders,
+  getClient
+}: {
+  date: string;
+  mealName: string;
+  orders: DailyMealOrder[];
+  getClient: (clientId: string) => Client | undefined;
+}) {
+  const pages = orders.reduce<DailyMealOrder[][]>((result, order, index) => {
+    const pageIndex = Math.floor(index / 4);
+    result[pageIndex] ??= [];
+    result[pageIndex].push(order);
+    return result;
+  }, []);
+
+  return (
+    <div className="delivery-print-sheet" aria-hidden="true">
+      {pages.map((page, pageIndex) => (
+        <section key={`${date}:${mealName}:${pageIndex}`} className="delivery-print-page">
+          {[...page, ...Array<DailyMealOrder | null>(Math.max(0, 4 - page.length)).fill(null)].map((order, cardIndex) => {
+            const client = order ? getClient(order.clientId) : undefined;
+            return (
+              <article key={order?.id ?? `blank-${pageIndex}-${cardIndex}`} className={`delivery-print-card${order ? "" : " delivery-print-card--blank"}`}>
+                {order ? (
+                  <>
+                    <div className="delivery-print-card__header">
+                      <div>
+                        <p className="delivery-print-card__brand">밥심 식사배달관리</p>
+                        <p className="delivery-print-card__title">배달 전표</p>
+                      </div>
+                      <p className="delivery-print-card__order">순서 {pageIndex * 4 + cardIndex + 1}</p>
+                    </div>
+                    <p className="delivery-print-card__date">{formatKoreanDate(date)} · {mealName}</p>
+                    <dl className="delivery-print-card__details">
+                      <div><dt>업체</dt><dd>{client?.name}</dd></div>
+                      <div><dt>수량</dt><dd className="delivery-print-card__quantity">{order.finalQuantity}개</dd></div>
+                      <div className="delivery-print-card__address"><dt>주소</dt><dd>{client?.address}{client?.addressDetail ? ` ${client.addressDetail}` : ""}</dd></div>
+                      <div className="delivery-print-card__memo"><dt>메모</dt><dd>{client?.deliveryMemo || "-"}</dd></div>
+                    </dl>
+                  </>
+                ) : null}
+              </article>
+            );
+          })}
+        </section>
+      ))}
+    </div>
   );
 }
 
