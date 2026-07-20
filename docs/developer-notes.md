@@ -13,7 +13,7 @@ This file is the first stop for the next agent or developer continuing the proje
 - Framework: Next.js 15, React 19, TypeScript, Tailwind CSS
 - Current storage mode: **Supabase connected** (Server Components + Server Actions)
 - Supabase project: `babsim` at `https://fnfdudfzasgaukpfmxkv.supabase.co`
-- Supabase schema: base schema and RLS policies applied. Run `docs/supabase-contact-groups-migration.sql` once before using settlement/contact groups in production.
+- Supabase schema: base schema, RLS policies, and `docs/supabase-contact-groups-migration.sql` applied in the production SQL Editor on 2026-07-20 KST.
 - PWA: manifest, service worker, installable HTTPS deployment prepared
 - Production URL: `https://bapsim.vercel.app` (Deployed via Vercel)
 
@@ -114,6 +114,7 @@ The app state currently contains:
 - The migration creates one settlement account and one contact group per existing delivery location, preserving current links and PINs.
 - After migration: create `한울상사` in `정산/담당자`, edit management office, warehouse, print room 1, and print room 3 to select that settlement account, then create one contact group for print rooms 1 and 3. Their former individual-group access is reassigned to the shared group.
 - Delivery tables remain location based. Monthly settlement and CSV export aggregate by settlement account.
+- 정산/담당자 deletion is guarded: reassign every delivery location before deleting a settlement account or contact group. Deleting an unassigned settlement account also deletes only its manual monthly settlement adjustments; deleting an unassigned contact group permanently invalidates its link and PIN.
 - `npm run typecheck` and `npm run build` passed after implementation. `npm run test:supabase` was not run because it performs an external service-role credential check.
 
 ## Next Recommended Work

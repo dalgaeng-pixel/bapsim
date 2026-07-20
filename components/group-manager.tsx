@@ -93,6 +93,34 @@ export function GroupManager({ adminName, store }: { adminName: string; store: R
     navigator.clipboard.writeText(message).then(() => alert("담당자 링크와 PIN이 복사되었습니다."));
   };
 
+  const confirmSettlementAccountDeletion = (
+    account: { id: string; name: string },
+    locationCount: number
+  ) => {
+    if (locationCount > 0) {
+      window.alert(`"${account.name}"에 배정된 배달 장소가 ${locationCount}곳 있습니다. 거래처 메뉴에서 다른 정산 업체로 변경한 뒤 삭제하세요.`);
+      return;
+    }
+
+    if (!window.confirm(`"${account.name}" 정산 업체와 해당 월별 집계 수정 내역을 삭제할까요?`)) {
+      return;
+    }
+
+    store.deleteSettlementAccount(account.id, adminName);
+  };
+
+  const confirmContactGroupDeletion = (group: ContactAccessGroup, locationCount: number) => {
+    if (locationCount > 0) {
+      window.alert(`"${group.name}"에 연결된 배달 장소가 ${locationCount}곳 있습니다. 다른 담당자 그룹으로 옮긴 뒤 삭제하세요.`);
+      return;
+    }
+
+    if (!window.confirm(`"${group.name}" 담당자 그룹과 접속 링크를 삭제할까요? 삭제 후에는 기존 링크와 PIN을 사용할 수 없습니다.`)) {
+      return;
+    }
+
+    store.deleteContactAccessGroup(group.id, adminName);
+  };
   return (
     <div className="space-y-5">
       <section className="border-b border-stone-200 pb-5">
@@ -157,15 +185,14 @@ export function GroupManager({ adminName, store }: { adminName: string; store: R
                     <Power size={15} />
                     {account.status === "active" ? "일시중지" : "사용 재개"}
                   </button>
-                  {locations.length === 0 ? (
-                    <button
-                      className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-700"
-                      onClick={() => store.deleteSettlementAccount(account.id, adminName)}
-                    >
-                      <Trash2 size={15} />
-                      삭제
-                    </button>
-                  ) : null}
+                  <button
+                    className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-700"
+                    onClick={() => confirmSettlementAccountDeletion(account, locations.length)}
+                    title={locations.length ? "배정 장소를 다른 정산 업체로 변경한 뒤 삭제할 수 있습니다." : "정산 업체를 삭제합니다."}
+                  >
+                    <Trash2 size={15} />
+                    삭제
+                  </button>
                 </div>
               </div>
             );
@@ -283,6 +310,14 @@ export function GroupManager({ adminName, store }: { adminName: string; store: R
                   }, adminName)}>
                     <Power size={15} />
                     {group.status === "active" ? "일시중지" : "사용 재개"}
+                  </button>
+                  <button
+                    className="focus-ring inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-700"
+                    onClick={() => confirmContactGroupDeletion(group, locations.length)}
+                    title={locations.length ? "배정 장소를 다른 담당자 그룹으로 옮긴 뒤 삭제할 수 있습니다." : "담당자 그룹을 삭제합니다."}
+                  >
+                    <Trash2 size={15} />
+                    삭제
                   </button>
                 </div>
               </div>
