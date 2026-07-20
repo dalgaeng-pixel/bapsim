@@ -102,6 +102,8 @@ type DailyMealOrderRow = {
   memo: string | null;
   requires_review: boolean;
   acknowledged: boolean;
+  is_admin_correction?: boolean;
+  settlement_included?: boolean;
   updated_at: string;
 };
 
@@ -279,7 +281,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     contactAccessGroupRows,
     contactAccessGroupMemberRows,
     settlementAdjustmentRows,
-    settlementPricingStorageReady
+    settlementPricingStorageReady,
+    deliveryCorrectionStorageReady
   ] = await Promise.all([
     selectRows<ClientRow>(client, "clients"),
     selectRows<MealTypeRow>(client, "meal_types"),
@@ -295,7 +298,11 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     selectOptionalRows<ContactAccessGroupRow>(client, "contact_access_groups"),
     selectOptionalRows<ContactAccessGroupMemberRow>(client, "contact_access_group_members"),
     selectOptionalRows<MonthlySettlementAdjustmentRow>(client, "monthly_settlement_adjustments"),
-    hasOptionalColumn(client, "monthly_settlement_adjustments", "unit_price")
+    hasOptionalColumn(client, "monthly_settlement_adjustments", "unit_price"),
+    Promise.all([
+      hasOptionalColumn(client, "daily_meal_orders", "is_admin_correction"),
+      hasOptionalColumn(client, "daily_meal_orders", "settlement_included")
+    ]).then((columns) => columns.every(Boolean))
   ]);
 
   const deliveryOverrides = Object.fromEntries(
@@ -366,6 +373,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     })),
     groupStorageReady,
     settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
+    deliveryCorrectionStorageReady,
     mealTypes: mealTypeRows.map((row): MealType => ({
       id: row.id,
       name: row.name,
@@ -390,6 +398,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       memo: row.memo ?? undefined,
       requiresReview: row.requires_review,
       acknowledged: row.acknowledged,
+      isAdminCorrection: row.is_admin_correction === true,
+      settlementIncluded: row.settlement_included !== false,
       updatedAt: row.updated_at
     })),
     orderChangeLogs: logRows.map((row): OrderChangeLog => ({
@@ -470,7 +480,8 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     auditLogs: state.auditLogs,
     deliveryOverrides: state.deliveryOverrides,
     groupStorageReady: state.groupStorageReady,
-    settlementPricingStorageReady: state.settlementPricingStorageReady
+    settlementPricingStorageReady: state.settlementPricingStorageReady,
+    deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady
   });
 }
 
@@ -496,6 +507,7 @@ export type AppStateDiff = {
   contactAccessGroupMembers?: ContactAccessGroupMember[];
   groupStorageReady?: boolean;
   settlementPricingStorageReady?: boolean;
+  deliveryCorrectionStorageReady?: boolean;
   mealTypes?: MealType[];
   defaultQuantities?: DefaultMealQuantity[];
   orders?: DailyMealOrder[];
@@ -512,6 +524,7 @@ export type AppStateDiff = {
 export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: AppStateDiff) {
   const groupStorageReady = diff.groupStorageReady === true;
   const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
+  const deliveryCorrectionStorageReady = diff.deliveryCorrectionStorageReady === true;
   if (diff.deleted) {
     await deleteRows(client, "order_change_logs", diff.deleted.orderChangeLogs ?? []);
     await deleteRows(client, "change_requests", diff.deleted.changeRequests ?? []);
@@ -621,6 +634,12 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
         memo: item.memo ?? null,
         requires_review: item.requiresReview,
         acknowledged: item.acknowledged,
+        ...(deliveryCorrectionStorageReady
+          ? {
+              is_admin_correction: item.isAdminCorrection === true,
+              settlement_included: item.settlementIncluded !== false
+            }
+          : {}),
         updated_at: item.updatedAt
       }))
     );

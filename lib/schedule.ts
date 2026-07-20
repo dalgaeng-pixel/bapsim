@@ -128,9 +128,14 @@ export function normalizeAppState(state: AppState): AppState {
     ...grouping,
     groupStorageReady: state.groupStorageReady === true,
     settlementPricingStorageReady: state.settlementPricingStorageReady !== false,
+    deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady !== false,
     mealTypes,
     defaultQuantities,
-    orders: state.orders ?? [],
+    orders: (state.orders ?? []).map((order) => ({
+      ...order,
+      isAdminCorrection: order.isAdminCorrection === true,
+      settlementIncluded: order.settlementIncluded !== false
+    })),
     orderChangeLogs: state.orderChangeLogs ?? [],
     changeRequests: state.changeRequests ?? [],
     holidays: (state.holidays ?? []).map(normalizeHoliday),
@@ -341,11 +346,25 @@ export function getBillableOrdersForClientMonth(state: AppState, clientId: strin
 
   return getSettlementDatesForMonth(month)
     .flatMap((date) =>
-      enabledMealTypes(state)
-        .filter((mealType) => isPastCutoffForDate(date, mealType.cutoffTime))
-        .map((mealType) => getOrderForSlot(state, clientId, mealType.id, date))
+      enabledMealTypes(state).map((mealType) => {
+        const order = getOrderForSlot(state, clientId, mealType.id, date);
+        return { mealType, order };
+      })
     )
-    .filter((order) => isClientStartedOnDate(client, order.date));
+    .filter(({ mealType, order }) => order.isAdminCorrection || isPastCutoffForDate(order.date, mealType.cutoffTime))
+    .map(({ order }) => order)
+    .filter((order) => isClientStartedOnDate(client, order.date) || order.isAdminCorrection)
+    .filter((order) => order.settlementIncluded !== false);
+}
+
+export function getAdminDeliveryCorrectionsForMonth(state: AppState, month: string) {
+  return state.orders
+    .filter((order) => order.isAdminCorrection && order.date.startsWith(`${month}-`))
+    .sort((left, right) =>
+      left.date.localeCompare(right.date) ||
+      (state.clients.find((client) => client.id === left.clientId)?.deliveryOrder ?? 0) -
+        (state.clients.find((client) => client.id === right.clientId)?.deliveryOrder ?? 0)
+    );
 }
 
 export function getMonthlyAdjustment(state: AppState, clientId: string, month: string) {
@@ -390,6 +409,7 @@ export type SettlementDailyQuantity = {
 export type SettlementLocationDailyQuantity = SettlementDailyQuantity & {
   clientId: string;
   clientName: string;
+  hasAdminCorrection: boolean;
 };
 
 export function getMonthlySettlementDailyQuantitiesByLocation(
@@ -409,7 +429,7 @@ export function getMonthlySettlementDailyQuantitiesByLocation(
     const daily = new Map<string, SettlementLocationDailyQuantity>();
     clientSettlement.orders.forEach((order) => {
       const quantity = Math.max(0, order.finalQuantity);
-      if (quantity === 0) {
+      if (quantity === 0 && !order.isAdminCorrection) {
         return;
       }
 
@@ -419,7 +439,8 @@ export function getMonthlySettlementDailyQuantitiesByLocation(
         date: order.date,
         regularQuantity: 0,
         lunchboxQuantity: 0,
-        finalQuantity: 0
+        finalQuantity: 0,
+        hasAdminCorrection: false
       };
       if (supplyType === "lunchbox") {
         current.lunchboxQuantity += quantity;
@@ -427,6 +448,7 @@ export function getMonthlySettlementDailyQuantitiesByLocation(
         current.regularQuantity += quantity;
       }
       current.finalQuantity += quantity;
+      current.hasAdminCorrection ||= order.isAdminCorrection === true;
       daily.set(order.date, current);
     });
 
@@ -512,6 +534,8 @@ export function buildBaseOrder(
     memo: exceptionLabel ?? (baseQuantity === 0 ? "기본 안먹음" : undefined),
     requiresReview: false,
     acknowledged: false,
+    isAdminCorrection: false,
+    settlementIncluded: true,
     updatedAt: new Date().toISOString()
   };
 }

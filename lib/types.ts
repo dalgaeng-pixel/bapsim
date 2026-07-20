@@ -23,6 +23,8 @@ export type AuditAction =
   | "reset_pin"
   | "change_delivery_order"
   | "update_monthly_adjustment"
+  | "update_delivery_correction"
+  | "reset_delivery_correction"
   | "delete_client"
   | "create_settlement_account"
   | "update_settlement_account"
@@ -98,6 +100,8 @@ export interface DailyMealOrder {
   memo?: string;
   requiresReview: boolean;
   acknowledged: boolean;
+  isAdminCorrection?: boolean;
+  settlementIncluded?: boolean;
   updatedAt: string;
 }
 
@@ -187,6 +191,7 @@ export interface AppState {
   contactAccessGroupMembers: ContactAccessGroupMember[];
   groupStorageReady: boolean;
   settlementPricingStorageReady: boolean;
+  deliveryCorrectionStorageReady: boolean;
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
   orders: DailyMealOrder[];

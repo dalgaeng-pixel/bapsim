@@ -47,6 +47,8 @@ create table if not exists public.daily_meal_orders (
   memo text,
   requires_review boolean not null default false,
   acknowledged boolean not null default false,
+  is_admin_correction boolean not null default false,
+  settlement_included boolean not null default true,
   updated_at timestamptz not null default now(),
   unique (order_date, client_id, meal_type_id)
 );
@@ -170,6 +172,10 @@ create index if not exists daily_meal_orders_date_meal_idx
 
 create index if not exists daily_meal_orders_client_date_idx
   on public.daily_meal_orders (client_id, order_date desc);
+
+create index if not exists daily_meal_orders_admin_correction_date_idx
+  on public.daily_meal_orders (order_date desc, client_id, meal_type_id)
+  where is_admin_correction;
 
 create index if not exists change_requests_status_requested_idx
   on public.change_requests (status, requested_at desc);

@@ -112,6 +112,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
 
   diff.groupStorageReady = next.groupStorageReady;
   diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
+  diff.deliveryCorrectionStorageReady = next.deliveryCorrectionStorageReady;
 
   // Handle deliveryOverrides (Record<string, string[]>)
   const overridesDiff: Record<string, string[]> = {};
@@ -483,6 +484,112 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     [commit]
   );
 
+  const updateAdminDeliveryCorrection = useCallback(
+    (
+      input: {
+        clientId: string;
+        date: string;
+        mealTypeId: string;
+        finalQuantity: number;
+        settlementIncluded: boolean;
+        memo: string;
+      },
+      adminName: string
+    ) => {
+      commit((previous) => {
+        const client = previous.clients.find((item) => item.id === input.clientId);
+        const mealType = previous.mealTypes.find((item) => item.id === input.mealTypeId);
+        if (input.date > todayKey() || !client || !mealType) {
+          return previous;
+        }
+
+        const existing = previous.orders.find(
+          (item) => item.clientId === input.clientId && item.date === input.date && item.mealTypeId === input.mealTypeId
+        );
+        const baseOrder = existing ?? buildBaseOrder(previous, input.clientId, input.mealTypeId, input.date);
+        const finalQuantity = Math.max(0, Math.floor(Number(input.finalQuantity) || 0));
+        const memo = input.memo.trim() || "관리자 보정";
+        const updatedAt = new Date().toISOString();
+        const nextOrder: DailyMealOrder = {
+          ...baseOrder,
+          finalQuantity,
+          status: finalQuantity === baseOrder.baseQuantity ? "normal" : "changed",
+          memo,
+          requiresReview: false,
+          acknowledged: true,
+          isAdminCorrection: true,
+          settlementIncluded: input.settlementIncluded,
+          updatedAt
+        };
+        const changeLog: OrderChangeLog = {
+          id: id("log"),
+          orderId: nextOrder.id,
+          clientId: nextOrder.clientId,
+          mealTypeId: nextOrder.mealTypeId,
+          date: nextOrder.date,
+          actorType: "admin",
+          actorName: adminName,
+          beforeQuantity: baseOrder.finalQuantity,
+          afterQuantity: finalQuantity,
+          memo: `${input.settlementIncluded ? "정산 포함" : "정산 제외"} · ${memo}`,
+          createdAt: updatedAt
+        };
+
+        return {
+          ...previous,
+          orders: existing
+            ? previous.orders.map((item) => (item.id === existing.id ? nextOrder : item))
+            : [...previous.orders, nextOrder],
+          orderChangeLogs: [changeLog, ...previous.orderChangeLogs],
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_delivery_correction",
+              adminName,
+              targetLabel: client.name,
+              detail: `${input.date} ${mealType.name} 실제 납품 ${finalQuantity}개 · ${input.settlementIncluded ? "정산 포함" : "정산 제외"}`,
+              createdAt: updatedAt
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const resetAdminDeliveryCorrection = useCallback(
+    (clientId: string, date: string, mealTypeId: string, adminName: string) => {
+      commit((previous) => {
+        const existing = previous.orders.find(
+          (item) => item.clientId === clientId && item.date === date && item.mealTypeId === mealTypeId
+        );
+        const client = previous.clients.find((item) => item.id === clientId);
+        const mealType = previous.mealTypes.find((item) => item.id === mealTypeId);
+        if (!existing?.isAdminCorrection || !client || !mealType) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          orders: previous.orders.filter((item) => item.id !== existing.id),
+          orderChangeLogs: previous.orderChangeLogs.filter((item) => item.orderId !== existing.id),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "reset_delivery_correction",
+              adminName,
+              targetLabel: client.name,
+              detail: `${date} ${mealType.name} 실제 납품 보정을 기본 수량으로 복원`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
   const acknowledgeOrder = useCallback(
     (orderId: string, adminName: string) => {
       commit((previous) => {
@@ -1558,6 +1665,8 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     moveDeliveryOrder,
     updateMonthlyAdjustment,
     updateSettlementMonthlyAdjustment,
+    updateAdminDeliveryCorrection,
+    resetAdminDeliveryCorrection,
     createSettlementAccount,
     updateSettlementAccount,
     deleteSettlementAccount,

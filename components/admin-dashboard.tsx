@@ -49,10 +49,12 @@ import {
   createHolidayRule,
   enabledMealTypes,
   getWeeklyQuantitiesForClient,
+  getAdminDeliveryCorrectionsForMonth,
   getClientMealSupplyType,
   getMonthlySettlementDailyQuantitiesByLocation,
   getMonthlySettlementForClient,
   getMonthlySettlementForSettlementAccount,
+  getOrderForSlot,
   DEFAULT_MEAL_UNIT_PRICE,
   isClientStartedOnDate,
   mealSupplyTypeLabel,
@@ -749,6 +751,11 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   월별 단가 저장을 사용하려면 Supabase SQL Editor에서 <code>docs/supabase-monthly-settlement-pricing-migration.sql</code>을 한 번 실행하세요. 수량 정산은 계속 저장할 수 있습니다.
                 </div>
               ) : null}
+              <DeliveryCorrectionPanel
+                month={selectedMonth}
+                adminName={adminName}
+                store={store}
+              />
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead>
@@ -1013,6 +1020,157 @@ function MonthlySettlementRow({
   );
 }
 
+function DeliveryCorrectionPanel({
+  month,
+  adminName,
+  store
+}: {
+  month: string;
+  adminName: string;
+  store: ReturnType<typeof useBapsimStore>;
+}) {
+  const { state } = store;
+  const clients = [...state.clients].sort((left, right) => left.deliveryOrder - right.deliveryOrder);
+  const mealTypes = enabledMealTypes(state);
+  const [date, setDate] = useState(todayKey());
+  const [clientId, setClientId] = useState("");
+  const [mealTypeId, setMealTypeId] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [settlementIncluded, setSettlementIncluded] = useState(true);
+  const [memo, setMemo] = useState("");
+  const storageReady = store.storageMode === "local" || state.deliveryCorrectionStorageReady;
+  const selectedCorrection = state.orders.find(
+    (order) =>
+      order.isAdminCorrection &&
+      order.date === date &&
+      order.clientId === clientId &&
+      order.mealTypeId === mealTypeId
+  );
+  const parsedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const selectedDateIsValid = Boolean(date) && date <= todayKey();
+
+  useEffect(() => {
+    setDate(month === todayKey().slice(0, 7) ? todayKey() : `${month}-01`);
+  }, [month]);
+
+  useEffect(() => {
+    if (!clientId && clients[0]) {
+      setClientId(clients[0].id);
+    }
+  }, [clientId, clients]);
+
+  useEffect(() => {
+    if (!mealTypeId && mealTypes[0]) {
+      setMealTypeId(mealTypes[0].id);
+    }
+  }, [mealTypeId, mealTypes]);
+
+  useEffect(() => {
+    if (!date || !clientId || !mealTypeId) {
+      return;
+    }
+
+    const order = getOrderForSlot(state, clientId, mealTypeId, date);
+    setQuantity(String(order.finalQuantity));
+    setSettlementIncluded(order.settlementIncluded !== false);
+    setMemo(order.isAdminCorrection ? order.memo ?? "" : "");
+  }, [clientId, date, mealTypeId, state]);
+
+  const resetForm = () => {
+    setDate(month === todayKey().slice(0, 7) ? todayKey() : `${month}-01`);
+    setQuantity("");
+    setSettlementIncluded(true);
+    setMemo("");
+  };
+
+  return (
+    <section className="mt-5 border-y border-stone-200 py-5">
+      <div className="flex flex-col justify-between gap-2 md:flex-row md:items-end">
+        <div>
+          <h3 className="text-lg font-black">일별 납품 보정</h3>
+          <p className="text-sm font-semibold text-stone-500">
+            오늘 또는 과거 실제 납품 수량을 저장합니다. 정산 제외 샘플도 기록과 엑셀에는 남습니다.
+          </p>
+        </div>
+        <span className="text-xs font-bold text-stone-500">관리자 전용</span>
+      </div>
+
+      {!storageReady ? (
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">
+          Supabase SQL Editor에서 <code>docs/supabase-daily-delivery-corrections-migration.sql</code>을 실행한 뒤 새로고침하면 보정을 저장할 수 있습니다.
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)_minmax(0,0.8fr)_110px_minmax(0,1.3fr)_auto] xl:items-end">
+        <label className="grid gap-1 text-sm font-bold text-stone-700">
+          날짜
+          <input className="focus-ring h-10 rounded-md border border-stone-300 px-3" type="date" value={date} max={todayKey()} onChange={(event) => setDate(event.target.value)} />
+        </label>
+        <label className="grid gap-1 text-sm font-bold text-stone-700">
+          배달 장소
+          <select className="focus-ring h-10 rounded-md border border-stone-300 px-3" value={clientId} onChange={(event) => setClientId(event.target.value)}>
+            {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-bold text-stone-700">
+          식사
+          <select className="focus-ring h-10 rounded-md border border-stone-300 px-3" value={mealTypeId} onChange={(event) => setMealTypeId(event.target.value)}>
+            {mealTypes.map((mealType) => <option key={mealType.id} value={mealType.id}>{mealType.name}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-bold text-stone-700">
+          실제 수량
+          <input className="focus-ring h-10 rounded-md border border-stone-300 px-3 text-right font-black" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+        </label>
+        <label className="grid gap-1 text-sm font-bold text-stone-700">
+          보정 사유
+          <input className="focus-ring h-10 rounded-md border border-stone-300 px-3" value={memo} placeholder="샘플, 추가 납품 등" onChange={(event) => setMemo(event.target.value)} />
+        </label>
+        <div className="flex items-center gap-2 pb-1">
+          <label className="inline-flex h-10 items-center gap-2 whitespace-nowrap text-sm font-bold text-stone-700">
+            <input className="h-4 w-4 accent-bapsim-red" type="checkbox" checked={settlementIncluded} onChange={(event) => setSettlementIncluded(event.target.checked)} />
+            정산 포함
+          </label>
+          <button className="focus-ring inline-flex h-10 items-center justify-center rounded-md bg-bapsim-red px-3 text-white disabled:bg-stone-300" title={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} disabled={!storageReady || !selectedDateIsValid || !clientId || !mealTypeId || quantity.trim() === ""} onClick={() => { store.updateAdminDeliveryCorrection({ clientId, date, mealTypeId, finalQuantity: parsedQuantity, settlementIncluded, memo }, adminName); }}><Save size={17} /></button>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
+              <th className="py-2">일자</th><th>배달 장소</th><th>식사</th><th>실제 수량</th><th>정산</th><th className="hidden md:table-cell">메모</th><th>관리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {getAdminDeliveryCorrectionsForMonth(state, month).length === 0 ? (
+              <tr><td colSpan={7} className="py-4 text-center font-bold text-stone-400">등록된 일별 납품 보정이 없습니다.</td></tr>
+            ) : getAdminDeliveryCorrectionsForMonth(state, month).map((order) => {
+              const client = state.clients.find((item) => item.id === order.clientId);
+              const mealType = state.mealTypes.find((item) => item.id === order.mealTypeId);
+              return (
+                <tr key={order.id} className="border-b border-stone-100">
+                  <td className="py-2 font-bold">{order.date}</td>
+                  <td className="font-bold">{client?.name ?? "삭제된 거래처"}</td>
+                  <td>{mealType?.name ?? "식사"}</td>
+                  <td className="font-black text-bapsim-red">{order.finalQuantity}개</td>
+                  <td><span className={`inline-flex rounded-full px-2 py-1 text-xs font-black ${order.settlementIncluded === false ? "bg-stone-100 text-stone-600" : "bg-emerald-50 text-emerald-700"}`}>{order.settlementIncluded === false ? "정산 제외" : "정산 포함"}</span></td>
+                  <td className="hidden max-w-56 truncate md:table-cell">{order.memo ?? "관리자 보정"}</td>
+                  <td>
+                    <div className="flex gap-1">
+                      <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="보정 내용 수정" onClick={() => { setDate(order.date); setClientId(order.clientId); setMealTypeId(order.mealTypeId); setQuantity(String(order.finalQuantity)); setSettlementIncluded(order.settlementIncluded !== false); setMemo(order.memo ?? ""); }}><Pencil size={15} /></button>
+                      <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700 disabled:text-stone-300" title="기본 수량으로 되돌리기" disabled={!storageReady} onClick={() => { if (window.confirm(`${order.date} 실제 납품 보정을 기본 수량으로 되돌릴까요?`)) { store.resetAdminDeliveryCorrection(order.clientId, order.date, order.mealTypeId, adminName); resetForm(); } }}><RotateCcw size={15} /></button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 function SettlementMonthlyRow({
   adminName,
   account,
@@ -1062,7 +1220,7 @@ function SettlementMonthlyRow({
           <div className="space-y-1 text-xs font-bold text-stone-700">
             {dailyQuantities.map((daily) => (
               <div key={`${daily.clientId}:${daily.date}`} className="grid grid-cols-[minmax(0,1fr)_10mm_12mm] gap-1">
-                <span className="truncate">{daily.clientName}</span>
+                <span className="truncate">{daily.clientName}{daily.hasAdminCorrection ? " · 보정" : ""}</span>
                 <span>{daily.date.slice(5).replace("-", "/")}</span>
                 <span className="text-right">{daily.finalQuantity}개</span>
               </div>

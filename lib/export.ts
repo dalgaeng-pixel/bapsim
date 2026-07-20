@@ -1,6 +1,6 @@
 import type { AppState, DailyMealOrder } from "@/lib/types";
 import { todayKey } from "@/lib/date";
-import { getMonthlySettlementDailyQuantitiesByLocation, getMonthlySettlementForSettlementAccount, mealSupplyTypeLabel } from "@/lib/schedule";
+import { getClientMealSupplyType, getMonthlySettlementDailyQuantitiesByLocation, getMonthlySettlementForSettlementAccount, mealSupplyTypeLabel } from "@/lib/schedule";
 
 type SpreadsheetValue = string | number | undefined;
 
@@ -190,7 +190,7 @@ export function downloadExcel(filename: string, rows: SpreadsheetValue[][]) {
 
 export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
   return [
-    ["순서", "업체명", "유형", "식사", "수량", "주소", "상세주소", "배달 메모", "상태"],
+    ["순서", "업체명", "유형", "식사", "수량", "주소", "상세주소", "배달 메모", "상태", "보정", "정산"],
     ...orders.map((order, index) => {
       const client = state.clients.find((item) => item.id === order.clientId);
       const mealType = state.mealTypes.find((item) => item.id === order.mealTypeId);
@@ -203,7 +203,9 @@ export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
         client?.address,
         client?.addressDetail,
         client?.deliveryMemo,
-        order.status
+        order.status,
+        order.isAdminCorrection ? "관리자 보정" : "자동",
+        order.settlementIncluded === false ? "제외" : "포함"
       ];
     })
   ];
@@ -211,10 +213,33 @@ export function buildDeliveryRows(state: AppState, orders: DailyMealOrder[]) {
 
 export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)) {
   return [
-    ["구분", "정산 업체", "배달 장소", "일자", "일반 식수", "개인도시락", "일일 합계", "월 최종 식수", "단가", "금액", "정산 메모"],
+    ["구분", "정산 업체", "배달 장소", "일자", "일반 식수", "개인도시락", "일일 합계", "보정", "정산", "월 최종 식수", "단가", "금액", "정산 메모"],
     ...state.settlementAccounts.flatMap((account) => {
       const settlement = getMonthlySettlementForSettlementAccount(state, account.id, month);
       const locationDailyQuantities = getMonthlySettlementDailyQuantitiesByLocation(state, account.id, month);
+      const clientIds = new Set(settlement.clients.map((client) => client.id));
+      const excludedCorrections = state.orders
+        .filter(
+          (order) =>
+            order.isAdminCorrection &&
+            order.settlementIncluded === false &&
+            order.date.startsWith(`${month}-`) &&
+            clientIds.has(order.clientId)
+        )
+        .sort((left, right) => left.date.localeCompare(right.date))
+        .map((order) => {
+          const client = state.clients.find((item) => item.id === order.clientId);
+          const supplyType = getClientMealSupplyType(client);
+          const quantity = Math.max(0, order.finalQuantity);
+          return {
+            clientName: client?.name,
+            date: order.date,
+            regularQuantity: supplyType === "regular" ? quantity : 0,
+            lunchboxQuantity: supplyType === "lunchbox" ? quantity : 0,
+            quantity,
+            memo: order.memo ?? "관리자 보정"
+          };
+        });
       const locationSubtotals = settlement.clients.map((client, index) => ({
         client,
         quantity: settlement.clientSettlements[index]?.settlementFinalQuantity ?? 0
@@ -230,15 +255,34 @@ export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)
           daily.regularQuantity,
           daily.lunchboxQuantity,
           daily.finalQuantity,
+          daily.hasAdminCorrection ? "관리자 보정" : "자동",
+          "포함",
           "",
           "",
           "",
           ""
         ]),
+        ...excludedCorrections.map((correction) => [
+          "일별 보정",
+          account.name,
+          correction.clientName,
+          correction.date,
+          correction.regularQuantity,
+          correction.lunchboxQuantity,
+          correction.quantity,
+          "관리자 보정",
+          "제외",
+          "",
+          "",
+          "",
+          correction.memo
+        ]),
         ...locationSubtotals.map((item) => [
           "장소 소계",
           account.name,
           item.client.name,
+          "",
+          "",
           "",
           "",
           "",
@@ -251,6 +295,8 @@ export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)
         [
           "월 최종",
           account.name,
+          "",
+          "",
           "",
           "",
           "",
