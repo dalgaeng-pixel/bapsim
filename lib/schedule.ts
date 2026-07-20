@@ -499,10 +499,8 @@ export function getMonthlySettlementForSettlementAccount(
     (sum, settlement) => sum + settlement.computedFinalQuantity,
     0
   );
-  const locationAdjustedFinalQuantity = clientSettlements.reduce(
-    (sum, settlement) => sum + settlement.settlementFinalQuantity,
-    0
-  );
+  // Account settlement follows actual daily quantities; legacy client-level monthly overrides do not change location subtotals.
+  const locationAdjustedFinalQuantity = computedFinalQuantity;
   const adjustment = getSettlementAccountMonthlyAdjustment(state, settlementAccountId, month);
 
   return {

@@ -240,9 +240,11 @@ export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)
             memo: order.memo ?? "관리자 보정"
           };
         });
-      const locationSubtotals = settlement.clients.map((client, index) => ({
+      const locationSubtotals = settlement.clients.map((client) => ({
         client,
-        quantity: settlement.clientSettlements[index]?.settlementFinalQuantity ?? 0
+        quantity: locationDailyQuantities
+          .filter((daily) => daily.clientId === client.id)
+          .reduce((sum, daily) => sum + daily.finalQuantity, 0)
       }));
       const totalAmount = settlement.settlementFinalQuantity * settlement.unitPrice;
 
