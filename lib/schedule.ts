@@ -418,8 +418,8 @@ export function getMonthlySettlementDailyQuantitiesByLocation(
   month: string
 ): SettlementLocationDailyQuantity[] {
   const settlement = getMonthlySettlementForSettlementAccount(state, settlementAccountId, month);
-
-  return settlement.clientSettlements.flatMap((clientSettlement, index) => {
+  const deliveryOrderByClientId = new Map(settlement.clients.map((client, index) => [client.id, index]));
+  const rows = settlement.clientSettlements.flatMap((clientSettlement, index) => {
     const client = settlement.clients[index];
     if (!client) {
       return [];
@@ -452,10 +452,15 @@ export function getMonthlySettlementDailyQuantitiesByLocation(
       daily.set(order.date, current);
     });
 
-    return [...daily.values()].sort((left, right) => left.date.localeCompare(right.date));
+    return [...daily.values()];
   });
-}
 
+  return rows.sort((left, right) =>
+    left.date.localeCompare(right.date) ||
+    (deliveryOrderByClientId.get(left.clientId) ?? Number.MAX_SAFE_INTEGER) -
+      (deliveryOrderByClientId.get(right.clientId) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
 export function getMonthlySettlementDailyQuantities(
   state: AppState,
   settlementAccountId: string,

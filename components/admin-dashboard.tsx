@@ -757,12 +757,12 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                 store={store}
               />
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
+                <table className="min-w-[1280px] w-full border-collapse text-left text-sm">
                   <thead>
                     <tr className="border-b border-stone-200 text-xs font-black text-stone-500">
-                      <th className="py-3">정산 업체</th>
-                      <th>배송 장소</th>
-                      <th className="min-w-52">일별 식수</th>
+                      <th className="min-w-44 py-3">정산 업체</th>
+                      <th className="min-w-56">배송 장소</th>
+                      <th className="min-w-[300px]">일별 식수</th>
                       <th className="hidden lg:table-cell">기본</th>
                       <th className="hidden lg:table-cell">자동 최종</th>
                       <th>월 최종</th>
@@ -1101,40 +1101,39 @@ function DeliveryCorrectionPanel({
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1.35fr)_minmax(0,0.8fr)_110px_minmax(0,1.3fr)_auto] xl:items-end">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label className="grid gap-1 text-sm font-bold text-stone-700">
           날짜
-          <input className="focus-ring h-10 rounded-md border border-stone-300 px-3" type="date" value={date} max={todayKey()} onChange={(event) => setDate(event.target.value)} />
+          <input className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3" type="date" value={date} max={todayKey()} onChange={(event) => setDate(event.target.value)} />
         </label>
-        <label className="grid gap-1 text-sm font-bold text-stone-700">
+        <label className="grid gap-1 text-sm font-bold text-stone-700 sm:col-span-2">
           배달 장소
-          <select className="focus-ring h-10 rounded-md border border-stone-300 px-3" value={clientId} onChange={(event) => setClientId(event.target.value)}>
+          <select className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3" value={clientId} onChange={(event) => setClientId(event.target.value)}>
             {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-bold text-stone-700">
           식사
-          <select className="focus-ring h-10 rounded-md border border-stone-300 px-3" value={mealTypeId} onChange={(event) => setMealTypeId(event.target.value)}>
+          <select className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3" value={mealTypeId} onChange={(event) => setMealTypeId(event.target.value)}>
             {mealTypes.map((mealType) => <option key={mealType.id} value={mealType.id}>{mealType.name}</option>)}
           </select>
         </label>
         <label className="grid gap-1 text-sm font-bold text-stone-700">
           실제 수량
-          <input className="focus-ring h-10 rounded-md border border-stone-300 px-3 text-right font-black" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <input className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3 text-right font-black" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
         </label>
-        <label className="grid gap-1 text-sm font-bold text-stone-700">
+        <label className="grid gap-1 text-sm font-bold text-stone-700 sm:col-span-2">
           보정 사유
-          <input className="focus-ring h-10 rounded-md border border-stone-300 px-3" value={memo} placeholder="샘플, 추가 납품 등" onChange={(event) => setMemo(event.target.value)} />
+          <input className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3" value={memo} placeholder="샘플, 추가 납품 등" onChange={(event) => setMemo(event.target.value)} />
         </label>
-        <div className="flex items-center gap-2 pb-1">
+        <div className="flex items-center gap-3 pb-1">
           <label className="inline-flex h-10 items-center gap-2 whitespace-nowrap text-sm font-bold text-stone-700">
             <input className="h-4 w-4 accent-bapsim-red" type="checkbox" checked={settlementIncluded} onChange={(event) => setSettlementIncluded(event.target.checked)} />
             정산 포함
           </label>
-          <button className="focus-ring inline-flex h-10 items-center justify-center rounded-md bg-bapsim-red px-3 text-white disabled:bg-stone-300" title={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} disabled={!storageReady || !selectedDateIsValid || !clientId || !mealTypeId || quantity.trim() === ""} onClick={() => { store.updateAdminDeliveryCorrection({ clientId, date, mealTypeId, finalQuantity: parsedQuantity, settlementIncluded, memo }, adminName); }}><Save size={17} /></button>
+          <button className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-bapsim-red text-white disabled:bg-stone-300" title={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} aria-label={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} disabled={!storageReady || !selectedDateIsValid || !clientId || !mealTypeId || quantity.trim() === ""} onClick={() => { store.updateAdminDeliveryCorrection({ clientId, date, mealTypeId, finalQuantity: parsedQuantity, settlementIncluded, memo }, adminName); }}><Save size={17} /></button>
         </div>
       </div>
-
       <div className="mt-4 overflow-x-auto">
         <table className="w-full border-collapse text-left text-sm">
           <thead>
@@ -1215,7 +1214,7 @@ function SettlementMonthlyRow({
       <td className="py-3">
         <p className="font-semibold text-stone-700">{settlement.clients.map((client) => client.name).join(" · ") || "배달 장소 없음"}</p>
       </td>
-      <td className="py-3">
+      <td className="min-w-[300px] py-3">
         {dailyQuantities.length ? (
           <div className="space-y-1 text-xs font-bold text-stone-700">
             {dailyQuantities.map((daily) => (
