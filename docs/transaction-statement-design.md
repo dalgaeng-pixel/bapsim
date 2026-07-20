@@ -40,3 +40,11 @@ The page remains readable before migration, but supplier and settlement details 
 
 - Browser preview and A4 print through a hidden iframe, avoiding popup-blocker failures.
 - Separate `.xlsx` export. Existing delivery and monthly-settlement exports are unchanged.
+
+## A4 Print Form
+
+The browser print document is a bordered A4 portrait transaction statement. Its detail columns are:
+
+`일자 | 품목 | 단위 | 수량 | 단가 | 금액 | 비고`
+
+Each actual lunch/dinner meal becomes its own detail row with `품목` set to `중식` or `석식`. This preserves meal-level billing while retaining the familiar transaction-statement form. Monthly operations settlement remains a separate screen and is not reformatted by this print feature.

@@ -30,14 +30,8 @@ function escapeHtml(value: string) {
 function printTransactionStatement(statement: TransactionStatement, supplier: SupplierProfile) {
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
-  frame.style.position = "fixed";
-  frame.style.right = "0";
-  frame.style.bottom = "0";
-  frame.style.width = "1px";
-  frame.style.height = "1px";
-  frame.style.border = "0";
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;border:0";
   document.body.appendChild(frame);
-
   const target = frame.contentWindow;
   const documentRef = target?.document;
   if (!target || !documentRef) {
@@ -46,70 +40,54 @@ function printTransactionStatement(statement: TransactionStatement, supplier: Su
     return;
   }
 
+  const entries = statement.days.flatMap((day) => {
+    const rows: Array<{ date: string; item: string; quantity: number; amount: number }> = [];
+    if (day.lunchQuantity > 0) rows.push({ date: day.date, item: "중식", quantity: day.lunchQuantity, amount: day.lunchAmount });
+    if (day.dinnerQuantity > 0) rows.push({ date: day.date, item: "석식", quantity: day.dinnerQuantity, amount: day.dinnerAmount });
+    return rows;
+  });
+  const rows: Array<{ date: string; item: string; quantity: number; amount: number } | null> = [
+    ...entries,
+    ...Array.from({ length: Math.max(0, 24 - entries.length) }, () => null)
+  ];
   const accountText = [supplier.bankName, supplier.bankAccountNumber].filter(Boolean).join(" ");
-  const rowHtml = statement.days.map((day) => `
-    <tr>
-      <td>${escapeHtml(day.date)}</td>
-      <td>식사</td>
-      <td>${day.lunchQuantity ? `${day.lunchQuantity}개` : ""}</td>
-      <td>${day.lunchQuantity ? formatWon(day.lunchAmount) : ""}</td>
-      <td>${day.dinnerQuantity ? `${day.dinnerQuantity}개` : ""}</td>
-      <td>${day.dinnerQuantity ? formatWon(day.dinnerAmount) : ""}</td>
-      <td>${formatWon(statement.unitPrice)}</td>
-      <td>${formatWon(day.totalAmount)}</td>
-    </tr>`).join("");
+  const rowHeight = entries.length > 45 ? "3.4mm" : entries.length > 32 ? "4mm" : "4.8mm";
+  const rowHtml = rows.map((row) => row ? [
+    "<tr><td>", escapeHtml(row.date), "</td><td>", escapeHtml(row.item), "</td><td>식</td><td>", String(row.quantity),
+    "</td><td>", formatWon(statement.unitPrice), "</td><td>", formatWon(row.amount), "</td><td>&nbsp;</td></tr>"
+  ].join("") : "<tr class=\"blank\"><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>").join("");
 
   documentRef.open();
-  documentRef.write(`<!doctype html>
-    <html lang="ko"><head><meta charset="utf-8"/><title>거래명세표</title>
-    <style>
-      * { box-sizing: border-box; }
-      @page { size: A4 portrait; margin: 12mm; }
-      body { margin: 0; color: #171717; font-family: Arial, "Malgun Gothic", sans-serif; font-size: 11px; }
-      h1 { margin: 0 0 7mm; text-align: center; font-size: 25px; letter-spacing: 0; }
-      .period { margin-bottom: 4mm; text-align: right; font-weight: 700; }
-      .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-bottom: 5mm; }
-      .party { border: 1px solid #222; min-height: 30mm; }
-      .party h2 { margin: 0; padding: 2.5mm 3mm; border-bottom: 1px solid #222; background: #f5f5f5; font-size: 12px; }
-      .party dl { display: grid; grid-template-columns: 27mm 1fr; margin: 0; }
-      .party dt, .party dd { margin: 0; padding: 1.5mm 3mm; border-bottom: 1px solid #ddd; }
-      .party dt { font-weight: 700; background: #fafafa; }
-      .party dd:last-child, .party dt:nth-last-of-type(1) { border-bottom: 0; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { border: 1px solid #222; padding: 2.3mm 1.5mm; text-align: center; }
-      th { background: #f3f3f3; font-weight: 700; }
-      td:nth-child(1), td:nth-child(2) { text-align: left; }
-      td:nth-child(n+3) { text-align: right; }
-      .summary { margin-top: 4mm; width: 100%; }
-      .summary td { text-align: right; }
-      .summary td:first-child { text-align: left; font-weight: 700; }
-      .total { font-size: 13px; font-weight: 700; }
-      .account { margin-top: 5mm; border-top: 1px solid #222; padding-top: 3mm; font-size: 12px; font-weight: 700; }
-    </style></head><body>
-      <h1>거래명세표</h1>
-      <div class="period">작성일 ${todayKey()} / 거래 기간 ${monthLabel(statement.month)}</div>
-      <section class="parties">
-        <div class="party"><h2>공급받는자</h2><dl>
-          <dt>업체명</dt><dd>${escapeHtml(statement.account.name)}</dd>
-          <dt>주소</dt><dd>${escapeHtml(statement.account.billingAddress || "")}</dd>
-        </dl></div>
-        <div class="party"><h2>공급자</h2><dl>
-          <dt>상호</dt><dd>${escapeHtml(supplier.businessName || "밥심")}</dd>
-          <dt>사업자등록번호</dt><dd>${escapeHtml(supplier.businessRegistrationNumber)}</dd>
-          <dt>사업장 주소</dt><dd>${escapeHtml(supplier.address)}</dd>
-          <dt>전화번호</dt><dd>${escapeHtml(supplier.phone)}</dd>
-          <dt>이메일</dt><dd>${escapeHtml(supplier.email)}</dd>
-        </dl></div>
-      </section>
-      <table><thead><tr><th>일자</th><th>품목</th><th>중식 수량</th><th>중식 금액</th><th>석식 수량</th><th>석식 금액</th><th>단가<br/>(VAT 포함)</th><th>일 합계</th></tr></thead>
-      <tbody>${rowHtml || '<tr><td colspan="8">해당 기간의 정산 포함 납품 기록이 없습니다.</td></tr>'}</tbody></table>
-      <table class="summary"><tbody>
-        <tr><td>중식 합계</td><td>${statement.lunchQuantity}개 / ${formatWon(statement.lunchAmount)}</td></tr>
-        <tr><td>석식 합계</td><td>${statement.dinnerQuantity}개 / ${formatWon(statement.dinnerAmount)}</td></tr>
-        <tr class="total"><td>월 총 식수</td><td>${statement.totalQuantity}개 / ${formatWon(statement.totalAmount)}</td></tr>
-      </tbody></table>
-      <div class="account">입금 계좌: ${escapeHtml(accountText)} &nbsp;&nbsp; 예금주: ${escapeHtml(supplier.accountHolder)}</div>
-    </body></html>`);
+  documentRef.write([
+    "<!doctype html><html lang=\"ko\"><head><meta charset=\"utf-8\"><title>거래명세서</title><style>",
+    ":root{--row-height:", rowHeight, ";}*{box-sizing:border-box}@page{size:A4 portrait;margin:7mm}",
+    "body{margin:0;color:#111;font-family:Arial,\"Malgun Gothic\",sans-serif;font-size:9px}.sheet{width:196mm;min-height:283mm;margin:0 auto}",
+    ".title{height:9mm;border:1px solid #111;border-bottom:0;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800}.title small{margin-left:2mm;font-size:9px}",
+    ".head{display:grid;grid-template-columns:42% 58%;border:1px solid #111}.recipient{border-right:1px solid #111}.head-title{height:7mm;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #111;font-size:11px;font-weight:800}",
+    ".field{display:grid;grid-template-columns:25mm 1fr;min-height:6.4mm;border-bottom:1px solid #111}.field:last-child{border-bottom:0}.field b{display:flex;align-items:center;justify-content:center;border-right:1px solid #111;background:#f8f8f8}.field span{display:flex;align-items:center;padding:1mm 2mm;overflow-wrap:anywhere}",
+    ".supplier{display:grid;grid-template-columns:1fr 1fr}.supplier .field:nth-child(odd){border-right:1px solid #111}.supplier .wide{grid-column:span 2}.supplier .field:nth-last-child(-n+2){border-bottom:0}",
+    ".total{height:7mm;display:flex;align-items:center;border:1px solid #111;border-top:0;padding:0 2mm;font-weight:800}.total strong{margin-left:4mm;font-size:11px}",
+    "table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{height:var(--row-height);border:1px solid #111;padding:.5mm 1mm;text-align:center;vertical-align:middle;white-space:nowrap}th{height:6mm;background:#f5f5f5;font-weight:800}td:nth-child(4),td:nth-child(5),td:nth-child(6){text-align:right}.blank td{color:transparent}",
+    ".summary{border-top:0}.summary td{height:7mm;font-size:10px;font-weight:800}.summary td:last-child{text-align:right;font-size:11px}.account{min-height:8mm;border:1px solid #111;border-top:0;display:flex;align-items:center;justify-content:center;padding:1mm 3mm;font-weight:800}.note{margin:2mm 0 0;color:#444;font-size:8px}",
+    "</style></head><body><main class=\"sheet\"><div class=\"title\">거래명세서 <small>(거래명세표)</small></div>",
+    "<section class=\"head\"><div class=\"recipient\"><div class=\"head-title\">공급받는자</div>",
+    "<div class=\"field\"><b>거래 기간</b><span>", escapeHtml(monthLabel(statement.month)), "</span></div>",
+    "<div class=\"field\"><b>상호</b><span>", escapeHtml(statement.account.name), "</span></div>",
+    "<div class=\"field\"><b>주소</b><span>", escapeHtml(statement.account.billingAddress || "미입력"), "</span></div></div>",
+    "<div><div class=\"head-title\">공급자</div><div class=\"supplier\">",
+    "<div class=\"field\"><b>사업자등록번호</b><span>", escapeHtml(supplier.businessRegistrationNumber || "미입력"), "</span></div>",
+    "<div class=\"field\"><b>상호</b><span>", escapeHtml(supplier.businessName || "밥심"), "</span></div>",
+    "<div class=\"field wide\"><b>사업장 주소</b><span>", escapeHtml(supplier.address || "미입력"), "</span></div>",
+    "<div class=\"field\"><b>전화번호</b><span>", escapeHtml(supplier.phone || "미입력"), "</span></div>",
+    "<div class=\"field\"><b>이메일</b><span>", escapeHtml(supplier.email || "미입력"), "</span></div>",
+    "</div></div></section><div class=\"total\">합계금액:<strong>", formatWon(statement.totalAmount), "</strong>&nbsp;&nbsp;(VAT 포함)</div>",
+    "<table><colgroup><col style=\"width:14%\"><col style=\"width:12%\"><col style=\"width:8%\"><col style=\"width:11%\"><col style=\"width:16%\"><col style=\"width:17%\"><col style=\"width:22%\"></colgroup>",
+    "<thead><tr><th>일자</th><th>품목</th><th>단위</th><th>수량</th><th>단가</th><th>금액</th><th>비고</th></tr></thead><tbody>", rowHtml, "</tbody></table>",
+    "<table class=\"summary\"><tbody><tr><td>중식 합계</td><td>", String(statement.lunchQuantity), "식</td><td>", formatWon(statement.lunchAmount), "</td><td>석식 합계</td><td>", String(statement.dinnerQuantity), "식</td><td>", formatWon(statement.dinnerAmount), "</td></tr>",
+    "<tr><td colspan=\"5\">합계</td><td colspan=\"2\">", String(statement.totalQuantity), "식 / ", formatWon(statement.totalAmount), "</td></tr></tbody></table>",
+    "<div class=\"account\">입금 계좌: ", escapeHtml(accountText || "미입력"), "&nbsp;&nbsp;&nbsp; 예금주: ", escapeHtml(supplier.accountHolder || "미입력"), "</div>",
+    "<p class=\"note\">작성일: ", escapeHtml(todayKey()), " / 단가는 VAT 포함 기준입니다.</p></main></body></html>"
+  ].join(""));
   documentRef.close();
   window.setTimeout(() => {
     target.focus();
@@ -253,26 +231,19 @@ export function TransactionStatementPanel({
         </section>
       </div>
 
-      <section className="overflow-hidden border border-stone-300 bg-white">
-        <div className="border-b border-stone-300 px-4 py-5 text-center"><h2 className="text-2xl font-black">거래명세표</h2><p className="mt-2 text-sm font-bold text-stone-600">작성일 {todayKey()} · 거래 기간 {monthLabel(month)}</p></div>
-        <div className="grid border-b border-stone-300 md:grid-cols-2">
-          <InfoBlock title="공급받는자" rows={[["업체명", statement.account.name], ["주소", statement.account.billingAddress || "미입력"]]} />
-          <InfoBlock title="공급자" rows={[["상호", state.supplierProfile.businessName || "밥심"], ["사업자등록번호", state.supplierProfile.businessRegistrationNumber || "미입력"], ["사업장 주소", state.supplierProfile.address || "미입력"], ["전화번호", state.supplierProfile.phone || "미입력"], ["이메일", state.supplierProfile.email || "미입력"]]} />
+      <section className="overflow-hidden border border-stone-900 bg-white text-[11px] text-stone-950">
+        <div className="border-b border-stone-900 py-2 text-center"><h2 className="text-lg font-black">거래명세서 <span className="text-xs">(거래명세표)</span></h2></div>
+        <div className="grid border-b border-stone-900 md:grid-cols-2">
+          <div className="border-b border-stone-900 p-3 md:border-b-0 md:border-r"><p className="font-black">공급받는자</p><p className="mt-2"><b>상호</b> {statement.account.name}</p><p className="mt-1 break-words"><b>주소</b> {statement.account.billingAddress || "미입력"}</p></div>
+          <div className="p-3"><p className="font-black">공급자</p><p className="mt-2"><b>상호</b> {state.supplierProfile.businessName || "밥심"} <span className="ml-3"><b>사업자등록번호</b> {state.supplierProfile.businessRegistrationNumber || "미입력"}</span></p><p className="mt-1"><b>사업장 주소</b> {state.supplierProfile.address || "미입력"}</p><p className="mt-1"><b>전화번호</b> {state.supplierProfile.phone || "미입력"} <span className="ml-3"><b>이메일</b> {state.supplierProfile.email || "미입력"}</span></p></div>
         </div>
-        <div className="overflow-x-auto"><table className="min-w-[760px] w-full border-collapse text-sm"><thead><tr className="bg-stone-100 text-xs font-black text-stone-700"><th className="border-b border-r border-stone-300 px-3 py-3 text-left">일자</th><th className="border-b border-r border-stone-300 px-3 py-3 text-left">품목</th><th className="border-b border-r border-stone-300 px-3 py-3 text-right">중식 수량</th><th className="border-b border-r border-stone-300 px-3 py-3 text-right">중식 금액</th><th className="border-b border-r border-stone-300 px-3 py-3 text-right">석식 수량</th><th className="border-b border-r border-stone-300 px-3 py-3 text-right">석식 금액</th><th className="border-b border-r border-stone-300 px-3 py-3 text-right">단가(VAT 포함)</th><th className="border-b border-stone-300 px-3 py-3 text-right">일 합계</th></tr></thead><tbody>
-          {statement.days.length ? statement.days.map((day) => <tr key={day.date} className="border-b border-stone-200"><td className="border-r border-stone-200 px-3 py-3 font-bold">{day.date}</td><td className="border-r border-stone-200 px-3 py-3">식사</td><td className="border-r border-stone-200 px-3 py-3 text-right font-bold">{day.lunchQuantity || ""}{day.lunchQuantity ? "개" : ""}</td><td className="border-r border-stone-200 px-3 py-3 text-right">{day.lunchQuantity ? formatWon(day.lunchAmount) : ""}</td><td className="border-r border-stone-200 px-3 py-3 text-right font-bold">{day.dinnerQuantity || ""}{day.dinnerQuantity ? "개" : ""}</td><td className="border-r border-stone-200 px-3 py-3 text-right">{day.dinnerQuantity ? formatWon(day.dinnerAmount) : ""}</td><td className="border-r border-stone-200 px-3 py-3 text-right">{formatWon(statement.unitPrice)}</td><td className="px-3 py-3 text-right font-black">{formatWon(day.totalAmount)}</td></tr>) : <tr><td colSpan={8} className="px-3 py-10 text-center font-bold text-stone-500">해당 기간의 정산 포함 납품 기록이 없습니다.</td></tr>}
+        <div className="border-b border-stone-900 px-3 py-2 font-black">거래 기간: {monthLabel(month)} <span className="ml-4">합계금액: {formatWon(statement.totalAmount)} (VAT 포함)</span></div>
+        <div className="overflow-x-auto"><table className="min-w-[660px] w-full table-fixed border-collapse"><thead><tr className="bg-stone-100 text-center text-xs font-black"><th className="border-b border-r border-stone-900 px-2 py-2">일자</th><th className="border-b border-r border-stone-900 px-2 py-2">품목</th><th className="border-b border-r border-stone-900 px-2 py-2">단위</th><th className="border-b border-r border-stone-900 px-2 py-2">수량</th><th className="border-b border-r border-stone-900 px-2 py-2">단가</th><th className="border-b border-r border-stone-900 px-2 py-2">금액</th><th className="border-b border-stone-900 px-2 py-2">비고</th></tr></thead><tbody>
+          {statement.days.flatMap((day) => [{ item: "중식", quantity: day.lunchQuantity, amount: day.lunchAmount }, { item: "석식", quantity: day.dinnerQuantity, amount: day.dinnerAmount }].filter((row) => row.quantity > 0).map((row) => ({ ...row, date: day.date }))).map((row) => <tr key={row.date + row.item}><td className="border-b border-r border-stone-900 px-2 py-2 text-center">{row.date}</td><td className="border-b border-r border-stone-900 px-2 py-2 text-center font-black">{row.item}</td><td className="border-b border-r border-stone-900 px-2 py-2 text-center">식</td><td className="border-b border-r border-stone-900 px-2 py-2 text-right font-black">{row.quantity}</td><td className="border-b border-r border-stone-900 px-2 py-2 text-right">{formatWon(statement.unitPrice)}</td><td className="border-b border-r border-stone-900 px-2 py-2 text-right font-black">{formatWon(row.amount)}</td><td className="border-b border-stone-900 px-2 py-2">&nbsp;</td></tr>)}
         </tbody></table></div>
-        <div className="grid border-t border-stone-300 text-sm md:grid-cols-3"><Summary label="중식 합계" value={`${statement.lunchQuantity}개 · ${formatWon(statement.lunchAmount)}`} /><Summary label="석식 합계" value={`${statement.dinnerQuantity}개 · ${formatWon(statement.dinnerAmount)}`} /><Summary label="월 총 식수" value={`${statement.totalQuantity}개 · ${formatWon(statement.totalAmount)}`} total /></div>
-        <div className="border-t border-stone-300 px-4 py-4 text-sm font-black">입금 계좌: {[state.supplierProfile.bankName, state.supplierProfile.bankAccountNumber].filter(Boolean).join(" ") || "미입력"} <span className="ml-4">예금주: {state.supplierProfile.accountHolder || "미입력"}</span></div>
+        <div className="grid border-b border-stone-900 text-center text-xs font-black md:grid-cols-3"><div className="border-b border-stone-900 p-3 md:border-b-0 md:border-r">중식 합계: {statement.lunchQuantity}식 / {formatWon(statement.lunchAmount)}</div><div className="border-b border-stone-900 p-3 md:border-b-0 md:border-r">석식 합계: {statement.dinnerQuantity}식 / {formatWon(statement.dinnerAmount)}</div><div className="p-3">합계: {statement.totalQuantity}식 / {formatWon(statement.totalAmount)}</div></div>
+        <div className="px-3 py-3 text-center text-xs font-black">입금 계좌: {[state.supplierProfile.bankName, state.supplierProfile.bankAccountNumber].filter(Boolean).join(" ") || "미입력"} <span className="ml-3">예금주: {state.supplierProfile.accountHolder || "미입력"}</span></div>
       </section>
     </div>
   );
-}
-
-function InfoBlock({ title, rows }: { title: string; rows: Array<[string, string]> }) {
-  return <div className="border-b border-stone-300 p-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"><h3 className="font-black">{title}</h3><dl className="mt-3 space-y-2 text-sm">{rows.map(([label, value]) => <div key={label} className="grid grid-cols-[6rem_minmax(0,1fr)] gap-3"><dt className="font-bold text-stone-500">{label}</dt><dd className="break-words font-semibold text-stone-800">{value}</dd></div>)}</dl></div>;
-}
-
-function Summary({ label, value, total = false }: { label: string; value: string; total?: boolean }) {
-  return <div className={`border-b border-stone-300 px-4 py-4 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 ${total ? "bg-red-50" : ""}`}><p className="text-xs font-black text-stone-500">{label}</p><p className={`mt-1 text-base font-black ${total ? "text-bapsim-red" : ""}`}>{value}</p></div>;
 }

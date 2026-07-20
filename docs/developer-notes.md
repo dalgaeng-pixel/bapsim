@@ -143,3 +143,12 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Run `docs/supabase-transaction-statements-migration.sql` once in the production Supabase SQL Editor before saving supplier profile, billing address, or account default unit price in Supabase. The transaction statement preview and existing monthly settlement remain available before the migration.
 - Customer-facing filtered state explicitly replaces the supplier profile with non-sensitive blanks, so supplier account number and business details are never delivered through customer links.
 - Related design: `docs/transaction-statement-design.md`.
+
+## A4 Transaction Statement Print Form (2026-07-20)
+
+- The existing monthly settlement screen remains unchanged. The separate transaction-statement action now prints a bordered **A4 portrait** document through the existing hidden print frame.
+- The printed detail table follows the formal form layout: date, item, unit, quantity, unit price, amount, and notes.
+- A delivery date with both meals is represented by two item rows: `중식` and `석식`. It no longer uses separate lunch/dinner quantity and amount columns.
+- The document includes recipient company and billing address, supplier business fields, VAT-inclusive total, lunch/dinner totals, grand total, bank account, and account holder.
+- The print layout adds blank detail rows for short months and reduces row height for months with many meal rows so normal monthly statements remain on one A4 portrait page.
+- The screen preview uses the same item-row arrangement; the browser print button is the authoritative A4 output.
