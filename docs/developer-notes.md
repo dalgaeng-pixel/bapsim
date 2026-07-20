@@ -72,7 +72,7 @@ Expected current result:
 
 ## Key Files
 
-- `components/admin-dashboard.tsx`: admin UI, tabs, client management, monthly settlement, XLSX actions, and dedicated four-cards-per-A4 delivery print window.
+- `components/admin-dashboard.tsx`: admin UI, tabs, client management, monthly settlement, XLSX actions, and popup-free four-cards-per-A4 delivery printing through a temporary hidden frame.
 - `components/client-app.tsx`: customer PIN login, multi-location selection for an authorized contact group, quantity change, rejection, profile change requests.
 - `lib/schedule.ts`: shared scheduling rules for lunch/dinner defaults, weekday quantities, virtual daily orders, no-meal exception rules, and location-level monthly settlement quantities.
 - `lib/export.ts`: standard XLSX writer with saved column widths; used by all Excel download actions.

@@ -198,12 +198,6 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       return;
     }
 
-    const printWindow = window.open("", "bapsim-delivery-print", "popup=yes,width=960,height=1200");
-    if (!printWindow) {
-      window.alert("인쇄 창을 열 수 없습니다. 브라우저 팝업 차단을 해제한 뒤 다시 시도하세요.");
-      return;
-    }
-
     const escapeHtml = (value: string | number | undefined) =>
       String(value ?? "").replace(/[&<>'"]/g, (character) => ({
         "&": "&amp;",
@@ -232,8 +226,26 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       return `<section class="page">${[...pageCards, ...Array(Math.max(0, 4 - pageCards.length)).fill('<article class="card blank"></article>')].join("")}</section>`;
     }).join("");
 
-    printWindow.document.open();
-    printWindow.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>밥심 배달표</title><style>
+    const printFrame = document.createElement("iframe");
+    printFrame.setAttribute("aria-hidden", "true");
+    printFrame.style.position = "fixed";
+    printFrame.style.right = "0";
+    printFrame.style.bottom = "0";
+    printFrame.style.width = "1px";
+    printFrame.style.height = "1px";
+    printFrame.style.border = "0";
+    document.body.appendChild(printFrame);
+
+    const printDocument = printFrame.contentDocument;
+    const printWindow = printFrame.contentWindow;
+    if (!printDocument || !printWindow) {
+      printFrame.remove();
+      window.alert("인쇄 화면을 준비하지 못했습니다. 다시 시도하세요.");
+      return;
+    }
+
+    printDocument.open();
+    printDocument.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>밥심 배달표</title><style>
       @page { size: A4 portrait; margin: 8mm; }
       * { box-sizing: border-box; }
       body { margin: 0; color: #1c1917; font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
@@ -249,8 +261,8 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
       dd { margin: 0; font-size: 12pt; font-weight: 800; overflow-wrap: anywhere; }
       .quantity { color: #c8191f; font-size: 22pt; line-height: 1; }
     </style></head><body>${pages}</body></html>`);
-    printWindow.document.close();
-    printWindow.addEventListener("afterprint", () => printWindow.close(), { once: true });
+    printDocument.close();
+    printWindow.addEventListener("afterprint", () => printFrame.remove(), { once: true });
     window.setTimeout(() => {
       printWindow.focus();
       printWindow.print();
