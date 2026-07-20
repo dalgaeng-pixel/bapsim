@@ -1,6 +1,6 @@
 # Developer Notes
 
-Last updated: 2026-07-09 KST
+Last updated: 2026-07-20 KST
 
 ## Purpose
 
@@ -98,6 +98,13 @@ The app state currently contains:
 - `auditLogs`: important admin action history.
 - `deliveryOverrides`: per-day temporary delivery ordering.
 
+## Accepted Design (Implementation Pending)
+
+- `docs/contact-group-design.md` records the accepted plan for separating **settlement accounts** from **customer contact access groups**.
+- Delivery locations remain the existing `clients`; delivery tables stay location based.
+- A settlement account aggregates connected delivery locations for admin-only monthly settlement and invoicing.
+- A contact access group has one link/PIN and grants access only to its assigned delivery locations. This supports the one-contact print room 1 + print room 3 case without exposing management office or warehouse data.
+- Implementation requires dedicated Supabase tables, a backward-compatible migration of existing client links/PINs, route/action authorization changes, and focused security tests. No application behavior has changed yet.
 ## Next Recommended Work
 
 1. Wire real admin phone OTP.
