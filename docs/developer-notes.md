@@ -133,3 +133,13 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - Update this file.
 - Keep README focused on user-facing run/test instructions.
+## Transaction Statements (Implemented in Source)
+
+- `월별 집계` keeps the existing operations-facing settlement table and Excel export. A separate `거래명세표` tab in the same menu provides a customer-facing statement per settlement account and month.
+- Statements aggregate all assigned delivery locations by date, displaying lunch and dinner quantities and amounts side by side. Only settlement-included daily orders are billed; samples are included when recorded as settlement-included.
+- Transaction statements deliberately use daily actual-delivery quantities rather than the account-level monthly final-quantity override, because a monthly override cannot be allocated safely to a specific date or meal period. Correct the daily delivery record when the statement needs to change.
+- Supplier profile fields are business name, business registration number, business address, phone, email, bank name, account number, and account holder. Receiver fields intentionally include only settlement account name and billing address.
+- Settlement accounts now have a persistent default VAT-inclusive unit price (8,000 KRW by default) and billing address. Existing selected-month unit-price overrides continue to take precedence.
+- Run `docs/supabase-transaction-statements-migration.sql` once in the production Supabase SQL Editor before saving supplier profile, billing address, or account default unit price in Supabase. The transaction statement preview and existing monthly settlement remain available before the migration.
+- Customer-facing filtered state explicitly replaces the supplier profile with non-sensitive blanks, so supplier account number and business details are never delivered through customer links.
+- Related design: `docs/transaction-statement-design.md`.

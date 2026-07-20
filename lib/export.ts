@@ -1,6 +1,7 @@
-import type { AppState, DailyMealOrder } from "@/lib/types";
+import type { AppState, DailyMealOrder, SupplierProfile } from "@/lib/types";
 import { todayKey } from "@/lib/date";
 import { getClientMealSupplyType, getMonthlySettlementDailyQuantitiesByLocation, getMonthlySettlementForSettlementAccount, mealSupplyTypeLabel } from "@/lib/schedule";
+import type { TransactionStatement } from "@/lib/transaction-statement";
 
 type SpreadsheetValue = string | number | undefined;
 
@@ -311,5 +312,40 @@ export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)
         ]
       ];
     })
+  ];
+}
+
+export function buildTransactionStatementRows(statement: TransactionStatement, supplier: SupplierProfile) {
+  const monthLabel = statement.month.replace("-", "년 ") + "월";
+  const supplierName = supplier.businessName || "밥심";
+  const accountText = [supplier.bankName, supplier.bankAccountNumber].filter(Boolean).join(" ");
+
+  return [
+    ["거래명세표"],
+    ["작성일", todayKey(), "거래 기간", monthLabel],
+    [],
+    ["공급받는자", statement.account.name, "공급자", supplierName],
+    ["주소", statement.account.billingAddress || "", "사업자등록번호", supplier.businessRegistrationNumber],
+    ["", "", "사업장 주소", supplier.address],
+    ["", "", "전화번호", supplier.phone],
+    ["", "", "이메일", supplier.email],
+    [],
+    ["일자", "품목", "중식 수량", "중식 금액", "석식 수량", "석식 금액", "단가(VAT 포함)", "일 합계"],
+    ...statement.days.map((day) => [
+      day.date,
+      "식사",
+      day.lunchQuantity,
+      day.lunchAmount,
+      day.dinnerQuantity,
+      day.dinnerAmount,
+      statement.unitPrice,
+      day.totalAmount
+    ]),
+    [],
+    ["중식 합계", "", statement.lunchQuantity, statement.lunchAmount, "", "", "", ""],
+    ["석식 합계", "", "", "", statement.dinnerQuantity, statement.dinnerAmount, "", ""],
+    ["월 총 식수", "", statement.totalQuantity, "", "", "", "", statement.totalAmount],
+    [],
+    ["입금 계좌", accountText, "예금주", supplier.accountHolder]
   ];
 }

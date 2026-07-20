@@ -178,7 +178,9 @@ export function createInitialState(): AppState {
     settlementAccounts: clients.map((client) => ({
       id: client.id,
       name: client.name,
-      status: client.status === "active" ? "active" : "paused" as const
+      status: client.status === "active" ? "active" : "paused" as const,
+      billingAddress: `${client.address} ${client.addressDetail}`.trim(),
+      defaultUnitPrice: 8000
     })),
     contactAccessGroups: clients.map((client) => ({
       id: client.id,
@@ -197,6 +199,19 @@ export function createInitialState(): AppState {
     groupStorageReady: true,
     settlementPricingStorageReady: true,
     deliveryCorrectionStorageReady: true,
+    supplierProfileStorageReady: true,
+    settlementAccountDetailsStorageReady: true,
+    supplierProfile: {
+      id: "primary",
+      businessName: "밥심",
+      businessRegistrationNumber: "",
+      address: "",
+      phone: "",
+      email: "",
+      bankName: "",
+      bankAccountNumber: "",
+      accountHolder: ""
+    },
     mealTypes,
     defaultQuantities,
     orders,

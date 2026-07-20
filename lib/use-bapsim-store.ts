@@ -26,6 +26,7 @@ import type {
   ContactAccessGroup,
   ContactAccessGroupMember,
   SettlementAccount,
+  SupplierProfile,
   DailyMealOrder,
   OrderChangeLog,
   Holiday
@@ -113,7 +114,11 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   diff.groupStorageReady = next.groupStorageReady;
   diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
   diff.deliveryCorrectionStorageReady = next.deliveryCorrectionStorageReady;
-
+  diff.supplierProfileStorageReady = next.supplierProfileStorageReady;
+  diff.settlementAccountDetailsStorageReady = next.settlementAccountDetailsStorageReady;
+  if (prev.supplierProfile !== next.supplierProfile) {
+    diff.supplierProfile = next.supplierProfile;
+  }
   // Handle deliveryOverrides (Record<string, string[]>)
   const overridesDiff: Record<string, string[]> = {};
   let hasOverridesDiff = false;
@@ -958,8 +963,9 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           : DEFAULT_MEAL_UNIT_PRICE;
         const normalizedMemo = input.memo.trim();
         const hasQuantityOverride = normalizedFinalQuantity !== settlement.locationAdjustedFinalQuantity;
+        const defaultUnitPrice = account.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE;
         const hasCustomUnitPrice =
-          previous.settlementPricingStorageReady && normalizedUnitPrice !== DEFAULT_MEAL_UNIT_PRICE;
+          previous.settlementPricingStorageReady && normalizedUnitPrice !== defaultUnitPrice;
         const shouldRemove = !hasQuantityOverride && !hasCustomUnitPrice && normalizedMemo.length === 0;
         const monthlyAdjustments = shouldRemove
           ? previous.monthlyAdjustments.filter((item) => item.id !== existing?.id)
@@ -1016,7 +1022,13 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
       }
 
       commit((previous) => {
-        const account: SettlementAccount = { id: id("settlement-account"), name: normalizedName, status: "active" };
+        const account: SettlementAccount = {
+          id: id("settlement-account"),
+          name: normalizedName,
+          status: "active",
+          billingAddress: "",
+          defaultUnitPrice: DEFAULT_MEAL_UNIT_PRICE
+        };
         return {
           ...previous,
           settlementAccounts: [...previous.settlementAccounts, account],
@@ -1038,14 +1050,26 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
   );
 
   const updateSettlementAccount = useCallback(
-    (accountId: string, updates: Pick<SettlementAccount, "name" | "status">, adminName: string) => {
-      commit((previous) => {
+    (
+      accountId: string,
+      updates: Pick<SettlementAccount, "name" | "status"> & Partial<Pick<SettlementAccount, "billingAddress" | "defaultUnitPrice">>,
+      adminName: string
+    ) => {      commit((previous) => {
         const account = previous.settlementAccounts.find((item) => item.id === accountId);
         if (!account) {
           return previous;
         }
 
-        const nextAccount = { ...account, ...updates, name: updates.name.trim() || account.name };
+        const nextAccount: SettlementAccount = {
+          ...account,
+          ...updates,
+          name: updates.name.trim() || account.name,
+          billingAddress: updates.billingAddress === undefined ? account.billingAddress ?? "" : updates.billingAddress.trim(),
+          defaultUnitPrice:
+            updates.defaultUnitPrice === undefined
+              ? account.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE
+              : Math.max(0, Math.floor(Number(updates.defaultUnitPrice) || 0))
+        };
         return {
           ...previous,
           settlementAccounts: previous.settlementAccounts.map((item) =>
@@ -1068,6 +1092,40 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     [commit]
   );
 
+  const updateSupplierProfile = useCallback(
+    (updates: Omit<SupplierProfile, "id">, adminName: string) => {
+      commit((previous) => {
+        const supplierProfile: SupplierProfile = {
+          id: previous.supplierProfile.id || "primary",
+          businessName: updates.businessName.trim() || "밥심",
+          businessRegistrationNumber: updates.businessRegistrationNumber.trim(),
+          address: updates.address.trim(),
+          phone: updates.phone.trim(),
+          email: updates.email.trim(),
+          bankName: updates.bankName.trim(),
+          bankAccountNumber: updates.bankAccountNumber.trim(),
+          accountHolder: updates.accountHolder.trim()
+        };
+
+        return {
+          ...previous,
+          supplierProfile,
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_supplier_profile",
+              adminName,
+              targetLabel: supplierProfile.businessName,
+              detail: "거래명세표 공급자 정보 수정",
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
   const deleteSettlementAccount = useCallback(
     (accountId: string, adminName: string) => {
       commit((previous) => {
@@ -1669,6 +1727,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     resetAdminDeliveryCorrection,
     createSettlementAccount,
     updateSettlementAccount,
+    updateSupplierProfile,
     deleteSettlementAccount,
     createContactAccessGroup,
     updateContactAccessGroup,

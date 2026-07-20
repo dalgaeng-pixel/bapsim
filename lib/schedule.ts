@@ -112,7 +112,11 @@ export function normalizeAppState(state: AppState): AppState {
       ...client,
       mealSupplyType: client.mealSupplyType ?? "regular"
     })),
-    settlementAccounts: state.settlementAccounts ?? [],
+    settlementAccounts: (state.settlementAccounts ?? []).map((account) => ({
+      ...account,
+      billingAddress: account.billingAddress ?? "",
+      defaultUnitPrice: account.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE
+    })),
     contactAccessGroups: state.contactAccessGroups ?? [],
     contactAccessGroupMembers: state.contactAccessGroupMembers ?? []
   });
@@ -129,6 +133,19 @@ export function normalizeAppState(state: AppState): AppState {
     groupStorageReady: state.groupStorageReady === true,
     settlementPricingStorageReady: state.settlementPricingStorageReady !== false,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady !== false,
+    supplierProfileStorageReady: state.supplierProfileStorageReady === true,
+    settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady === true,
+    supplierProfile: {
+      id: state.supplierProfile?.id ?? "primary",
+      businessName: state.supplierProfile?.businessName ?? "밥심",
+      businessRegistrationNumber: state.supplierProfile?.businessRegistrationNumber ?? "",
+      address: state.supplierProfile?.address ?? "",
+      phone: state.supplierProfile?.phone ?? "",
+      email: state.supplierProfile?.email ?? "",
+      bankName: state.supplierProfile?.bankName ?? "",
+      bankAccountNumber: state.supplierProfile?.bankAccountNumber ?? "",
+      accountHolder: state.supplierProfile?.accountHolder ?? ""
+    },
     mealTypes,
     defaultQuantities,
     orders: (state.orders ?? []).map((order) => ({
@@ -489,6 +506,7 @@ export function getMonthlySettlementForSettlementAccount(
   settlementAccountId: string,
   month: string
 ) {
+  const account = state.settlementAccounts.find((item) => item.id === settlementAccountId);
   const clients = getClientsForSettlementAccount(state, settlementAccountId);
   const clientSettlements = clients.map((client) => getMonthlySettlementForClient(state, client.id, month));
   const computedBaseQuantity = clientSettlements.reduce(
@@ -511,7 +529,7 @@ export function getMonthlySettlementForSettlementAccount(
     computedFinalQuantity,
     locationAdjustedFinalQuantity,
     settlementFinalQuantity: adjustment?.finalQuantity ?? locationAdjustedFinalQuantity,
-    unitPrice: adjustment?.unitPrice ?? DEFAULT_MEAL_UNIT_PRICE,
+    unitPrice: adjustment?.unitPrice ?? account?.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE,
     rejectedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.rejectedCount, 0),
     changedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.changedCount, 0)
   };

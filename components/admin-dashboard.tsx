@@ -34,6 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Logo } from "@/components/logo";
 import { GroupManager } from "@/components/group-manager";
+import { TransactionStatementPanel } from "@/components/transaction-statement-panel";
 import { logoutAdminAction } from "@/app/actions/auth";
 import {
   getPushNotificationStatus,
@@ -152,7 +153,8 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
   const [pushStatus, setPushStatus] = useState<VisiblePushStatus>("checking");
   const [pushBusy, setPushBusy] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayKey());
-  const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
+const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
+  const [monthlyView, setMonthlyView] = useState<"settlement" | "statement">("settlement");
   const [selectedMealTypeId, setSelectedMealTypeId] = useState<string | null>(null);
 
   const { state } = store;
@@ -723,9 +725,13 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
             <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
                 <div>
-                  <h2 className="text-xl font-black">월별 집계</h2>
+                  <h2 className="text-xl font-black">
+                    {monthlyView === "statement" ? "\uAC70\uB798\uBA85\uC138\uD45C" : "\uC6D4\uBCC4 \uC9D1\uACC4"}
+                  </h2>
                   <p className="text-sm font-semibold text-stone-500">
-                    기본 식수와 변경/거절을 자동 계산하고, 정산 최종 수량은 별도로 수정할 수 있습니다.
+                    {monthlyView === "statement"
+                      ? "\uC815\uC0B0 \uC5C5\uCCB4\uBCC4 \uC2E4\uC81C \uC77C\uBCC4 \uB0A9\uD488 \uC218\uB7C9\uC744 \uC911\uC2DD\uACFC \uC11D\uC2DD\uC73C\uB85C \uB098\uB204\uC5B4 \uD655\uC778\uD569\uB2C8\uB2E4."
+                      : "\uAE30\uC874 \uC6D4\uBCC4 \uC9D1\uACC4\uB97C \uD655\uC778\uD569\uB2C8\uB2E4."}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -736,7 +742,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                     onChange={(event) => setSelectedMonth(event.target.value)}
                   />
                   <button
-                    className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold"
+                    className={`${monthlyView === "statement" ? "hidden " : ""}focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-bold`}
                     onClick={() =>
                       void downloadExcel(`bapsim-monthly-${selectedMonth}.xlsx`, buildMonthlyRows(state, selectedMonth))
                     }
@@ -746,6 +752,11 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   </button>
                 </div>
               </div>
+              <div className="mt-5 inline-flex rounded-md border border-stone-300 bg-stone-50 p-1" role="tablist" aria-label="월별 업무 보기">
+                <button className={`focus-ring rounded px-3 py-2 text-sm font-black ${monthlyView === "settlement" ? "bg-bapsim-red text-white" : "text-stone-600"}`} role="tab" aria-selected={monthlyView === "settlement"} onClick={() => setMonthlyView("settlement")}>월별 집계</button>
+                <button className={`focus-ring rounded px-3 py-2 text-sm font-black ${monthlyView === "statement" ? "bg-bapsim-red text-white" : "text-stone-600"}`} role="tab" aria-selected={monthlyView === "statement"} onClick={() => setMonthlyView("statement")}>거래명세표</button>
+              </div>
+              {monthlyView === "settlement" ? <>
               {!state.settlementPricingStorageReady && store.storageMode !== "local" ? (
                 <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">
                   월별 단가 저장을 사용하려면 Supabase SQL Editor에서 <code>docs/supabase-monthly-settlement-pricing-migration.sql</code>을 한 번 실행하세요. 수량 정산은 계속 저장할 수 있습니다.
@@ -791,6 +802,7 @@ export function AdminDashboard({ initialState }: { initialState?: AppState }) {
                   </tbody>
                 </table>
               </div>
+              </> : <TransactionStatementPanel month={selectedMonth} adminName={adminName} store={store} />}
             </div>
           ) : null}
 
@@ -1246,7 +1258,7 @@ function SettlementMonthlyRow({
           <button className="focus-ring rounded-md bg-bapsim-red p-2 text-white disabled:bg-stone-300" title="정산 수량·단가 저장" disabled={!dirty || quantity.trim() === "" || unitPrice.trim() === ""} onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, { finalQuantity: parsedQuantity, unitPrice: parsedUnitPrice, memo: normalizedMemo }, adminName)}>
             <Save size={16} />
           </button>
-          <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="수량과 단가를 기본값으로 복원" onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, { finalQuantity: settlement.locationAdjustedFinalQuantity, unitPrice: DEFAULT_MEAL_UNIT_PRICE, memo: "" }, adminName)}>
+          <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="수량과 단가를 기본값으로 복원" onClick={() => store.updateSettlementMonthlyAdjustment(account.id, month, { finalQuantity: settlement.locationAdjustedFinalQuantity, unitPrice: account.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE, memo: "" }, adminName)}>
             <RotateCcw size={16} />
           </button>
         </div>

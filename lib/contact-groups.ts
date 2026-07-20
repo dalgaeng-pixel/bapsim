@@ -106,6 +106,19 @@ export function filterStateForContactAccessGroup(state: AppState, contactAccessG
     changeRequests: state.changeRequests.filter((item) => clientIds.has(item.clientId)),
     holidays: state.holidays.filter((item) => !item.clientId || clientIds.has(item.clientId)),
     monthlyAdjustments: [],
+    supplierProfileStorageReady: false,
+    settlementAccountDetailsStorageReady: false,
+    supplierProfile: {
+      id: "primary",
+      businessName: "밥심",
+      businessRegistrationNumber: "",
+      address: "",
+      phone: "",
+      email: "",
+      bankName: "",
+      bankAccountNumber: "",
+      accountHolder: ""
+    },
     notifications: state.notifications.filter(
       (item) => item.target === "client" && !!item.clientId && clientIds.has(item.clientId)
     ),

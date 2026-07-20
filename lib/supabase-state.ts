@@ -13,7 +13,8 @@ import type {
   MealType,
   MonthlyAdjustment,
   OrderChangeLog,
-  SettlementAccount
+  SettlementAccount,
+  SupplierProfile
 } from "@/lib/types";
 import {
   buildClientSettingsHolidayRow,
@@ -48,6 +49,20 @@ type SettlementAccountRow = {
   id: string;
   name: string;
   status: SettlementAccount["status"];
+  billing_address?: string | null;
+  default_unit_price?: number | null;
+};
+
+type SupplierProfileRow = {
+  id: string;
+  business_name: string;
+  business_registration_number: string;
+  address: string;
+  phone: string;
+  email: string;
+  bank_name: string;
+  bank_account_number: string;
+  account_holder: string;
 };
 
 type ContactAccessGroupRow = {
@@ -281,6 +296,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     contactAccessGroupRows,
     contactAccessGroupMemberRows,
     settlementAdjustmentRows,
+    supplierProfileRows,
+    settlementAccountDetailsStorageReady,
     settlementPricingStorageReady,
     deliveryCorrectionStorageReady
   ] = await Promise.all([
@@ -298,6 +315,11 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     selectOptionalRows<ContactAccessGroupRow>(client, "contact_access_groups"),
     selectOptionalRows<ContactAccessGroupMemberRow>(client, "contact_access_group_members"),
     selectOptionalRows<MonthlySettlementAdjustmentRow>(client, "monthly_settlement_adjustments"),
+    selectOptionalRows<SupplierProfileRow>(client, "supplier_profiles"),
+    Promise.all([
+      hasOptionalColumn(client, "settlement_accounts", "billing_address"),
+      hasOptionalColumn(client, "settlement_accounts", "default_unit_price")
+    ]).then((columns) => columns.every(Boolean)),
     hasOptionalColumn(client, "monthly_settlement_adjustments", "unit_price"),
     Promise.all([
       hasOptionalColumn(client, "daily_meal_orders", "is_admin_correction"),
@@ -333,6 +355,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     contactAccessGroupRows !== undefined &&
     contactAccessGroupMemberRows !== undefined &&
     settlementAdjustmentRows !== undefined;
+  const supplierProfile = supplierProfileRows?.[0];
 
   return normalizeAppState({
     clients: clientRows.map((row): Client => ({
@@ -355,7 +378,9 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     settlementAccounts: (settlementAccountRows ?? []).map((row): SettlementAccount => ({
       id: row.id,
       name: row.name,
-      status: row.status
+      status: row.status,
+      billingAddress: row.billing_address ?? "",
+      defaultUnitPrice: row.default_unit_price ?? 8000
     })),
     contactAccessGroups: (contactAccessGroupRows ?? []).map((row): ContactAccessGroup => ({
       id: row.id,
@@ -374,6 +399,19 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     groupStorageReady,
     settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
+    supplierProfileStorageReady: supplierProfileRows !== undefined,
+    settlementAccountDetailsStorageReady: groupStorageReady && settlementAccountDetailsStorageReady,
+    supplierProfile: {
+      id: supplierProfile?.id ?? "primary",
+      businessName: supplierProfile?.business_name ?? "밥심",
+      businessRegistrationNumber: supplierProfile?.business_registration_number ?? "",
+      address: supplierProfile?.address ?? "",
+      phone: supplierProfile?.phone ?? "",
+      email: supplierProfile?.email ?? "",
+      bankName: supplierProfile?.bank_name ?? "",
+      bankAccountNumber: supplierProfile?.bank_account_number ?? "",
+      accountHolder: supplierProfile?.account_holder ?? ""
+    },
     mealTypes: mealTypeRows.map((row): MealType => ({
       id: row.id,
       name: row.name,
@@ -481,7 +519,10 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     deliveryOverrides: state.deliveryOverrides,
     groupStorageReady: state.groupStorageReady,
     settlementPricingStorageReady: state.settlementPricingStorageReady,
-    deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady
+    deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady,
+    supplierProfileStorageReady: state.supplierProfileStorageReady,
+    settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady,
+    supplierProfile: state.supplierProfile
   });
 }
 
@@ -508,6 +549,9 @@ export type AppStateDiff = {
   groupStorageReady?: boolean;
   settlementPricingStorageReady?: boolean;
   deliveryCorrectionStorageReady?: boolean;
+  supplierProfileStorageReady?: boolean;
+  settlementAccountDetailsStorageReady?: boolean;
+  supplierProfile?: SupplierProfile;
   mealTypes?: MealType[];
   defaultQuantities?: DefaultMealQuantity[];
   orders?: DailyMealOrder[];
@@ -525,6 +569,8 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
   const groupStorageReady = diff.groupStorageReady === true;
   const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
   const deliveryCorrectionStorageReady = diff.deliveryCorrectionStorageReady === true;
+  const supplierProfileStorageReady = diff.supplierProfileStorageReady === true;
+  const settlementAccountDetailsStorageReady = diff.settlementAccountDetailsStorageReady === true;
   if (diff.deleted) {
     await deleteRows(client, "order_change_logs", diff.deleted.orderChangeLogs ?? []);
     await deleteRows(client, "change_requests", diff.deleted.changeRequests ?? []);
@@ -551,8 +597,32 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     await upsertRows(
       client,
       "settlement_accounts",
-      diff.settlementAccounts.map((item) => ({ id: item.id, name: item.name, status: item.status }))
+      diff.settlementAccounts.map((item) => ({
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        ...(settlementAccountDetailsStorageReady
+          ? {
+              billing_address: item.billingAddress ?? "",
+              default_unit_price: item.defaultUnitPrice ?? 8000
+            }
+          : {})
+      }))
     );
+  }
+
+  if (supplierProfileStorageReady && diff.supplierProfile) {
+    await upsertRows(client, "supplier_profiles", [{
+      id: diff.supplierProfile.id,
+      business_name: diff.supplierProfile.businessName,
+      business_registration_number: diff.supplierProfile.businessRegistrationNumber,
+      address: diff.supplierProfile.address,
+      phone: diff.supplierProfile.phone,
+      email: diff.supplierProfile.email,
+      bank_name: diff.supplierProfile.bankName,
+      bank_account_number: diff.supplierProfile.bankAccountNumber,
+      account_holder: diff.supplierProfile.accountHolder
+    }]);
   }
 
   if (groupStorageReady && diff.contactAccessGroups?.length) {

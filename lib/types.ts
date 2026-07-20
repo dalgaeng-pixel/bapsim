@@ -29,6 +29,7 @@ export type AuditAction =
   | "create_settlement_account"
   | "update_settlement_account"
   | "delete_settlement_account"
+  | "update_supplier_profile"
   | "create_contact_access_group"
   | "update_contact_access_group"
   | "reset_contact_access_group_pin"
@@ -38,6 +39,20 @@ export interface SettlementAccount {
   id: string;
   name: string;
   status: SettlementAccountStatus;
+  billingAddress?: string;
+  defaultUnitPrice?: number;
+}
+
+export interface SupplierProfile {
+  id: string;
+  businessName: string;
+  businessRegistrationNumber: string;
+  address: string;
+  phone: string;
+  email: string;
+  bankName: string;
+  bankAccountNumber: string;
+  accountHolder: string;
 }
 
 export interface ContactAccessGroup {
@@ -192,6 +207,9 @@ export interface AppState {
   groupStorageReady: boolean;
   settlementPricingStorageReady: boolean;
   deliveryCorrectionStorageReady: boolean;
+  supplierProfileStorageReady: boolean;
+  settlementAccountDetailsStorageReady: boolean;
+  supplierProfile: SupplierProfile;
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
   orders: DailyMealOrder[];
