@@ -201,6 +201,7 @@ export function createInitialState(): AppState {
     deliveryCorrectionStorageReady: true,
     supplierProfileStorageReady: true,
     settlementAccountDetailsStorageReady: true,
+    transactionStatementRemarksStorageReady: true,
     supplierProfile: {
       id: "primary",
       businessName: "밥심",
@@ -260,6 +261,7 @@ export function createInitialState(): AppState {
     ],
     holidays: [],
     monthlyAdjustments: [],
+    transactionStatementRemarks: [],
     notifications: [
       {
         id: ids.notifications[0],

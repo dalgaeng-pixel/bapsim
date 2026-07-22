@@ -14,7 +14,8 @@ import type {
   MonthlyAdjustment,
   OrderChangeLog,
   SettlementAccount,
-  SupplierProfile
+  SupplierProfile,
+  TransactionStatementRemark
 } from "@/lib/types";
 import {
   buildClientSettingsHolidayRow,
@@ -63,6 +64,15 @@ type SupplierProfileRow = {
   bank_name: string;
   bank_account_number: string;
   account_holder: string;
+};
+
+type TransactionStatementRemarkRow = {
+  id: string;
+  settlement_account_id: string;
+  client_id: string;
+  order_date: string;
+  memo: string;
+  updated_at: string;
 };
 
 type ContactAccessGroupRow = {
@@ -299,7 +309,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     supplierProfileRows,
     settlementAccountDetailsStorageReady,
     settlementPricingStorageReady,
-    deliveryCorrectionStorageReady
+    deliveryCorrectionStorageReady,
+    transactionStatementRemarkRows
   ] = await Promise.all([
     selectRows<ClientRow>(client, "clients"),
     selectRows<MealTypeRow>(client, "meal_types"),
@@ -324,7 +335,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     Promise.all([
       hasOptionalColumn(client, "daily_meal_orders", "is_admin_correction"),
       hasOptionalColumn(client, "daily_meal_orders", "settlement_included")
-    ]).then((columns) => columns.every(Boolean))
+    ]).then((columns) => columns.every(Boolean)),
+    selectOptionalRows<TransactionStatementRemarkRow>(client, "transaction_statement_remarks")
   ]);
 
   const deliveryOverrides = Object.fromEntries(
@@ -356,6 +368,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     contactAccessGroupMemberRows !== undefined &&
     settlementAdjustmentRows !== undefined;
   const supplierProfile = supplierProfileRows?.[0];
+  const transactionStatementRemarksStorageReady = transactionStatementRemarkRows !== undefined;
 
   return normalizeAppState({
     clients: clientRows.map((row): Client => ({
@@ -399,6 +412,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     groupStorageReady,
     settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
+    transactionStatementRemarksStorageReady,
     supplierProfileStorageReady: supplierProfileRows !== undefined,
     settlementAccountDetailsStorageReady: groupStorageReady && settlementAccountDetailsStorageReady,
     supplierProfile: {
@@ -480,6 +494,14 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       .filter((row) => !isClientSettingsHolidayRow(row) && !isMonthlyAdjustmentHolidayRow(row))
       .map((row): Holiday => decodeHoliday(row)),
     monthlyAdjustments,
+    transactionStatementRemarks: (transactionStatementRemarkRows ?? []).map((row): TransactionStatementRemark => ({
+      id: row.id,
+      settlementAccountId: row.settlement_account_id,
+      clientId: row.client_id,
+      date: row.order_date,
+      memo: row.memo,
+      updatedAt: row.updated_at
+    })),
     notifications: notificationRows.map((row): AppNotification => ({
       id: row.id,
       target: row.target,
@@ -514,12 +536,14 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     changeRequests: state.changeRequests,
     holidays: state.holidays,
     monthlyAdjustments: state.monthlyAdjustments,
+    transactionStatementRemarks: state.transactionStatementRemarks,
     notifications: state.notifications,
     auditLogs: state.auditLogs,
     deliveryOverrides: state.deliveryOverrides,
     groupStorageReady: state.groupStorageReady,
     settlementPricingStorageReady: state.settlementPricingStorageReady,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady,
+    transactionStatementRemarksStorageReady: state.transactionStatementRemarksStorageReady,
     supplierProfileStorageReady: state.supplierProfileStorageReady,
     settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady,
     supplierProfile: state.supplierProfile
@@ -538,6 +562,7 @@ export type AppStateArrayKey =
   | "changeRequests"
   | "holidays"
   | "monthlyAdjustments"
+  | "transactionStatementRemarks"
   | "notifications"
   | "auditLogs";
 
@@ -549,6 +574,7 @@ export type AppStateDiff = {
   groupStorageReady?: boolean;
   settlementPricingStorageReady?: boolean;
   deliveryCorrectionStorageReady?: boolean;
+  transactionStatementRemarksStorageReady?: boolean;
   supplierProfileStorageReady?: boolean;
   settlementAccountDetailsStorageReady?: boolean;
   supplierProfile?: SupplierProfile;
@@ -559,6 +585,7 @@ export type AppStateDiff = {
   changeRequests?: ChangeRequest[];
   holidays?: Holiday[];
   monthlyAdjustments?: MonthlyAdjustment[];
+  transactionStatementRemarks?: TransactionStatementRemark[];
   notifications?: AppNotification[];
   auditLogs?: AdminAuditLog[];
   deliveryOverrides?: Record<string, string[]>;
@@ -569,6 +596,7 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
   const groupStorageReady = diff.groupStorageReady === true;
   const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
   const deliveryCorrectionStorageReady = diff.deliveryCorrectionStorageReady === true;
+  const transactionStatementRemarksStorageReady = diff.transactionStatementRemarksStorageReady === true;
   const supplierProfileStorageReady = diff.supplierProfileStorageReady === true;
   const settlementAccountDetailsStorageReady = diff.settlementAccountDetailsStorageReady === true;
   if (diff.deleted) {
@@ -580,6 +608,9 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     await deleteRows(client, "holidays", (diff.deleted.clients ?? []).map(clientSettingsHolidayId));
     await deleteRows(client, "default_meal_quantities", diff.deleted.defaultQuantities ?? []);
     await deleteRows(client, "daily_meal_orders", diff.deleted.orders ?? []);
+    if (transactionStatementRemarksStorageReady) {
+      await deleteRows(client, "transaction_statement_remarks", diff.deleted.transactionStatementRemarks ?? []);
+    }
     await deleteRows(client, "admin_audit_logs", diff.deleted.auditLogs ?? []);
     if (groupStorageReady) {
       await deleteRows(client, "contact_access_group_members", diff.deleted.contactAccessGroupMembers ?? []);
@@ -592,7 +623,6 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     }
     await deleteRows(client, "meal_types", diff.deleted.mealTypes ?? []);
   }
-
   if (groupStorageReady && diff.settlementAccounts?.length) {
     await upsertRows(
       client,
@@ -609,6 +639,17 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
           : {})
       }))
     );
+  }
+
+  if (transactionStatementRemarksStorageReady && diff.transactionStatementRemarks?.length) {
+    await upsertRows(client, "transaction_statement_remarks", diff.transactionStatementRemarks.map((item) => ({
+      id: item.id,
+      settlement_account_id: item.settlementAccountId,
+      client_id: item.clientId,
+      order_date: item.date,
+      memo: item.memo,
+      updated_at: item.updatedAt
+    })));
   }
 
   if (supplierProfileStorageReady && diff.supplierProfile) {

@@ -321,7 +321,7 @@ export function buildTransactionStatementRows(statement: TransactionStatement, s
   const accountText = [supplier.bankName, supplier.bankAccountNumber].filter(Boolean).join(" ");
 
   return [
-    ["거래명세표"],
+    ["거래명세서"],
     ["작성일", todayKey(), "거래 기간", monthLabel],
     [],
     ["공급받는자", statement.account.name, "공급자", supplierName],
@@ -330,21 +330,21 @@ export function buildTransactionStatementRows(statement: TransactionStatement, s
     ["", "", "전화번호", supplier.phone],
     ["", "", "이메일", supplier.email],
     [],
-    ["일자", "품목", "중식 수량", "중식 금액", "석식 수량", "석식 금액", "단가(VAT 포함)", "일 합계"],
-    ...statement.days.map((day) => [
-      day.date,
-      "식사",
-      day.lunchQuantity,
-      day.lunchAmount,
-      day.dinnerQuantity,
-      day.dinnerAmount,
-      statement.unitPrice,
-      day.totalAmount
+    ["배달 장소", "일자", "중식", "석식", "단가(VAT 포함)", "금액", "비고"],
+    ...statement.locations.flatMap((location) => [
+      ...location.days.map((day) => [
+        location.client.name,
+        day.date,
+        day.lunchQuantity || "",
+        day.dinnerQuantity || "",
+        statement.unitPrice,
+        day.totalAmount,
+        day.memo ?? ""
+      ]),
+      ["장소 소계", location.client.name, location.lunchQuantity, location.dinnerQuantity, "", location.totalAmount, ""]
     ]),
     [],
-    ["중식 합계", "", statement.lunchQuantity, statement.lunchAmount, "", "", "", ""],
-    ["석식 합계", "", "", "", statement.dinnerQuantity, statement.dinnerAmount, "", ""],
-    ["월 총 식수", "", statement.totalQuantity, "", "", "", "", statement.totalAmount],
+    ["월 합계", "", statement.lunchQuantity, statement.dinnerQuantity, "", statement.totalAmount, ""],
     [],
     ["입금 계좌", accountText, "예금주", supplier.accountHolder]
   ];

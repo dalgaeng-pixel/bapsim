@@ -106,6 +106,8 @@ export function filterStateForContactAccessGroup(state: AppState, contactAccessG
     changeRequests: state.changeRequests.filter((item) => clientIds.has(item.clientId)),
     holidays: state.holidays.filter((item) => !item.clientId || clientIds.has(item.clientId)),
     monthlyAdjustments: [],
+    transactionStatementRemarks: [],
+    transactionStatementRemarksStorageReady: false,
     supplierProfileStorageReady: false,
     settlementAccountDetailsStorageReady: false,
     supplierProfile: {

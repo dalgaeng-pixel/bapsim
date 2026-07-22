@@ -135,6 +135,7 @@ export function normalizeAppState(state: AppState): AppState {
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady !== false,
     supplierProfileStorageReady: state.supplierProfileStorageReady === true,
     settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady === true,
+    transactionStatementRemarksStorageReady: state.transactionStatementRemarksStorageReady !== false,
     supplierProfile: {
       id: state.supplierProfile?.id ?? "primary",
       businessName: state.supplierProfile?.businessName ?? "밥심",
@@ -157,6 +158,7 @@ export function normalizeAppState(state: AppState): AppState {
     changeRequests: state.changeRequests ?? [],
     holidays: (state.holidays ?? []).map(normalizeHoliday),
     monthlyAdjustments: state.monthlyAdjustments ?? [],
+    transactionStatementRemarks: state.transactionStatementRemarks ?? [],
     notifications: state.notifications ?? [],
     auditLogs: state.auditLogs ?? [],
     deliveryOverrides: state.deliveryOverrides ?? {}

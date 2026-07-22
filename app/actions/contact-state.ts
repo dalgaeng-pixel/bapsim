@@ -13,6 +13,7 @@ const forbiddenKeys: Array<keyof AppStateDiff> = [
   "defaultQuantities",
   "holidays",
   "monthlyAdjustments",
+  "transactionStatementRemarks",
   "auditLogs",
   "deliveryOverrides"
 ];

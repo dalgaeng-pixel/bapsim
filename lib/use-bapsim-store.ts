@@ -84,6 +84,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
     "changeRequests",
     "holidays",
     "monthlyAdjustments",
+    "transactionStatementRemarks",
     "notifications",
     "auditLogs"
   ];
@@ -114,6 +115,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   diff.groupStorageReady = next.groupStorageReady;
   diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
   diff.deliveryCorrectionStorageReady = next.deliveryCorrectionStorageReady;
+  diff.transactionStatementRemarksStorageReady = next.transactionStatementRemarksStorageReady;
   diff.supplierProfileStorageReady = next.supplierProfileStorageReady;
   diff.settlementAccountDetailsStorageReady = next.settlementAccountDetailsStorageReady;
   if (prev.supplierProfile !== next.supplierProfile) {
@@ -1092,6 +1094,58 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     [commit]
   );
 
+  const updateTransactionStatementRemarks = useCallback(
+    (
+      settlementAccountId: string,
+      remarks: Array<{ clientId: string; date: string; memo: string }>,
+      adminName: string
+    ) => {
+      commit((previous) => {
+        const account = previous.settlementAccounts.find((item) => item.id === settlementAccountId);
+        if (!account) {
+          return previous;
+        }
+
+        const updatedAt = new Date().toISOString();
+        const byKey = new Map(
+          remarks.map((item) => [`${item.clientId}:${item.date}`, item.memo.trim()])
+        );
+        let transactionStatementRemarks = previous.transactionStatementRemarks.filter(
+          (item) => !(item.settlementAccountId === settlementAccountId && byKey.has(`${item.clientId}:${item.date}`) && byKey.get(`${item.clientId}:${item.date}`) === "")
+        );
+
+        for (const [key, memo] of byKey) {
+          if (!memo) {
+            continue;
+          }
+          const [clientId, date] = key.split(":");
+          const existing = transactionStatementRemarks.find(
+            (item) => item.settlementAccountId === settlementAccountId && item.clientId === clientId && item.date === date
+          );
+          transactionStatementRemarks = existing
+            ? transactionStatementRemarks.map((item) => item.id === existing.id ? { ...item, memo, updatedAt } : item)
+            : [...transactionStatementRemarks, { id: id("transaction-remark"), settlementAccountId, clientId, date, memo, updatedAt }];
+        }
+
+        return {
+          ...previous,
+          transactionStatementRemarks,
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_transaction_statement_remark",
+              adminName,
+              targetLabel: account.name,
+              detail: "거래명세표 비고 수정",
+              createdAt: updatedAt
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
   const updateSupplierProfile = useCallback(
     (updates: Omit<SupplierProfile, "id">, adminName: string) => {
       commit((previous) => {
@@ -1681,6 +1735,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           changeRequests: previous.changeRequests.filter((item) => item.clientId !== clientId),
           holidays: previous.holidays.filter((item) => item.clientId !== clientId),
           monthlyAdjustments: previous.monthlyAdjustments.filter((item) => item.clientId !== clientId),
+          transactionStatementRemarks: previous.transactionStatementRemarks.filter((item) => item.clientId !== clientId),
           notifications: previous.notifications.filter((item) => item.clientId !== clientId),
           deliveryOverrides,
           auditLogs: [
@@ -1723,6 +1778,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     moveDeliveryOrder,
     updateMonthlyAdjustment,
     updateSettlementMonthlyAdjustment,
+    updateTransactionStatementRemarks,
     updateAdminDeliveryCorrection,
     resetAdminDeliveryCorrection,
     createSettlementAccount,

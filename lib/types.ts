@@ -33,7 +33,8 @@ export type AuditAction =
   | "create_contact_access_group"
   | "update_contact_access_group"
   | "reset_contact_access_group_pin"
-  | "delete_contact_access_group";
+  | "delete_contact_access_group"
+  | "update_transaction_statement_remark";
 
 export interface SettlementAccount {
   id: string;
@@ -180,6 +181,15 @@ export interface MonthlyAdjustment {
   updatedAt: string;
 }
 
+export interface TransactionStatementRemark {
+  id: string;
+  settlementAccountId: string;
+  clientId: string;
+  date: string;
+  memo: string;
+  updatedAt: string;
+}
+
 export interface AppNotification {
   id: string;
   target: NotificationTarget;
@@ -209,6 +219,7 @@ export interface AppState {
   deliveryCorrectionStorageReady: boolean;
   supplierProfileStorageReady: boolean;
   settlementAccountDetailsStorageReady: boolean;
+  transactionStatementRemarksStorageReady: boolean;
   supplierProfile: SupplierProfile;
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
@@ -217,6 +228,7 @@ export interface AppState {
   changeRequests: ChangeRequest[];
   holidays: Holiday[];
   monthlyAdjustments: MonthlyAdjustment[];
+  transactionStatementRemarks: TransactionStatementRemark[];
   notifications: AppNotification[];
   auditLogs: AdminAuditLog[];
   deliveryOverrides: Record<string, string[]>;

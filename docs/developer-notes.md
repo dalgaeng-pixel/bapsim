@@ -152,3 +152,12 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - The document includes recipient company and billing address, supplier business fields, VAT-inclusive total, lunch/dinner totals, grand total, bank account, and account holder.
 - The print layout adds blank detail rows for short months and reduces row height for months with many meal rows so normal monthly statements remain on one A4 portrait page.
 - The screen preview uses the same item-row arrangement; the browser print button is the authoritative A4 output.
+
+## Location Tables and Transaction Remarks (2026-07-22)
+
+- Transaction statements now preserve each delivery location instead of aggregating every location into one daily line. Lunch and dinner quantities share the same date row.
+- A4 print layout adapts to the settlement account's location count: one location uses a full-width table; two use vertically stacked tables; three or four use a 2x2 grid. More than four locations continue on another A4 page in groups of four.
+- Each location table prints date, lunch quantity, dinner quantity, amount, and one shared remark. Location subtotal and overall monthly totals remain visible.
+- Admins can edit transaction-statement remarks in the statement preview. The print/PDF button is disabled until changed remarks are saved, so PDF output always uses saved data.
+- Remarks are stored in transaction_statement_remarks, keyed by settlement account, client, and order date. They intentionally do not reuse order memo because normal virtual schedule days do not always have a stored order.
+- Before using saved remarks in Supabase, run docs/supabase-transaction-statement-remarks-migration.sql once in the production Supabase SQL Editor.

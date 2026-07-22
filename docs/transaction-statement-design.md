@@ -48,3 +48,11 @@ The browser print document is a bordered A4 portrait transaction statement. Its 
 `일자 | 품목 | 단위 | 수량 | 단가 | 금액 | 비고`
 
 Each actual lunch/dinner meal becomes its own detail row with `품목` set to `중식` or `석식`. This preserves meal-level billing while retaining the familiar transaction-statement form. Monthly operations settlement remains a separate screen and is not reformatted by this print feature.
+
+## Location Layout and Remarks
+
+For statement printing, delivery locations are no longer merged into a single date line. Each location has one row per delivery date:
+
+일자 | 중식 | 석식 | 금액 | 비고
+
+The place name is the title of its own table. The layout is adaptive: 1 location is full width, 2 locations are stacked, 3-4 locations use a 2x2 portrait A4 grid, and further locations begin another A4 page. An admin remark is shared by the lunch and dinner values for the same location/date and is saved before printing.
