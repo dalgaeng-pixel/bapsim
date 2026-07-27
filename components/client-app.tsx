@@ -316,7 +316,14 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
     <main className="min-h-screen pb-36 sm:pb-24">
       <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <Logo compact />
+          <Logo compact hideTextOnMobile />
+          <a
+            href="tel:0317983342"
+            className="ml-auto whitespace-nowrap text-lg font-black leading-none text-bapsim-red sm:text-2xl"
+            aria-label="밥심 전화번호 031-798-3342"
+          >
+            031-798-3342
+          </a>
           <button
             className="focus-ring rounded-full border border-stone-200 bg-white p-2"
             onClick={() => {

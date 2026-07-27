@@ -205,3 +205,7 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - For delivery locations with overtime registration enabled, the client Today/Tomorrow and Weekly Schedule screens omit dinner. Dinner is managed only through the Overtime Headcount menu.
 - When an enabled location has no overtime entry for a working day, delivery, settlement, and statement calculations use the most recent prior overtime registration, including an explicit `0` entry. Weekends and public or registered holidays remain `0` and never inherit a prior value.
 - The Overtime Headcount screen shows a prominent warning with the exact fallback quantity and instructs the user to save `0` when there is no overtime.
+## Client Header Restaurant Phone (2026-07-27)
+
+- Only the customer client screen header now displays the restaurant phone number `031-798-3342` in large red text to the right of the logo. It uses a `tel:` link for direct phone calls.
+- On narrow mobile screens, the logo title is hidden in that header only so the logo, phone number, and notification button do not overlap. Administrator and login headers are unchanged.

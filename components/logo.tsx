@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-export function Logo({ compact = false }: { compact?: boolean }) {
+export function Logo({ compact = false, hideTextOnMobile = false }: { compact?: boolean; hideTextOnMobile?: boolean }) {
   return (
     <div className="flex items-center gap-3">
       <div
@@ -19,7 +19,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
           className="object-cover"
         />
       </div>
-      <div>
+      <div className={hideTextOnMobile ? "hidden sm:block" : ""}>
         <p className="text-sm font-semibold text-bapsim-red">밥심</p>
         <h1 className={compact ? "text-lg font-black" : "text-2xl font-black"}>
           식사배달관리
