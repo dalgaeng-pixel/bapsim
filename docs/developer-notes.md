@@ -161,3 +161,9 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Admins can edit transaction-statement remarks in the statement preview. The print/PDF button is disabled until changed remarks are saved, so PDF output always uses saved data.
 - Remarks are stored in transaction_statement_remarks, keyed by settlement account, client, and order date. They intentionally do not reuse order memo because normal virtual schedule days do not always have a stored order.
 - Before using saved remarks in Supabase, run docs/supabase-transaction-statement-remarks-migration.sql once in the production Supabase SQL Editor.
+
+## Delivery Print Copies (2026-07-27)
+
+- Delivery printing now creates one A4 portrait page per delivery location instead of mixing locations on the same page.
+- Each page repeats the identical delivery slip six times in a 2-column by 3-row layout. The delivery order number remains the same on all six copies for that location.
+- The existing delivery details, cut borders, date, meal, quantity, address, and delivery memo remain unchanged.

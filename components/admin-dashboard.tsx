@@ -210,24 +210,35 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
         "'": "&#39;",
         '"': "&quot;"
       })[character] ?? character);
-    const cards = deliveryOrders.map((order, index) => {
+    const pages = deliveryOrders.map((order, index) => {
       const client = store.getClient(order.clientId);
       const address = [client?.address, client?.addressDetail].filter(Boolean).join(" ");
-      return `
-        <article class="card">
-          <header><div><p class="brand">밥심 식사배달관리</p><h1>배달 전표</h1></div><strong>순서 ${index + 1}</strong></header>
-          <p class="date">${escapeHtml(formatKoreanDate(selectedDate))} · ${escapeHtml(selectedMealType?.name ?? "식사")}</p>
-          <dl>
-            <div><dt>업체</dt><dd>${escapeHtml(client?.name)}</dd></div>
-            <div><dt>수량</dt><dd class="quantity">${order.finalQuantity}개</dd></div>
-            <div><dt>주소</dt><dd>${escapeHtml(address)}</dd></div>
-            <div><dt>메모</dt><dd>${escapeHtml(client?.deliveryMemo || "-")}</dd></div>
-          </dl>
-        </article>`;
-    });
-    const pages = Array.from({ length: Math.ceil(cards.length / 4) }, (_, index) => {
-      const pageCards = cards.slice(index * 4, index * 4 + 4);
-      return `<section class="page">${[...pageCards, ...Array(Math.max(0, 4 - pageCards.length)).fill('<article class="card blank"></article>')].join("")}</section>`;
+      const card = [
+        '<article class="card">',
+        '<header><div><p class="brand">밥심 식사배달관리</p><h1>배달 전표</h1></div><strong>순서 ',
+        String(index + 1),
+        '</strong></header>',
+        '<p class="date">',
+        escapeHtml(formatKoreanDate(selectedDate)),
+        ' · ',
+        escapeHtml(selectedMealType?.name ?? "식사"),
+        '</p>',
+        '<dl>',
+        '<div><dt>업체</dt><dd>',
+        escapeHtml(client?.name),
+        '</dd></div>',
+        '<div><dt>수량</dt><dd class="quantity">',
+        String(order.finalQuantity),
+        '개</dd></div>',
+        '<div><dt>주소</dt><dd>',
+        escapeHtml(address),
+        '</dd></div>',
+        '<div><dt>메모</dt><dd>',
+        escapeHtml(client?.deliveryMemo || "-"),
+        '</dd></div>',
+        '</dl></article>'
+      ].join("");
+      return '<section class="page">' + Array.from({ length: 6 }, () => card).join("") + '</section>';
     }).join("");
 
     const printFrame = document.createElement("iframe");
@@ -253,9 +264,9 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
       @page { size: A4 portrait; margin: 8mm; }
       * { box-sizing: border-box; }
       body { margin: 0; color: #1c1917; font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
-      .page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); width: 194mm; min-height: 281mm; break-after: page; page-break-after: always; }
+      .page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); width: 194mm; min-height: 281mm; break-after: page; page-break-after: always; }
       .page:last-child { break-after: auto; page-break-after: auto; }
-      .card { min-width: 0; min-height: 0; overflow: hidden; border: 1px dashed #78716c; padding: 6mm; }
+      .card { min-width: 0; min-height: 0; overflow: hidden; border: 1px dashed #78716c; padding: 4.5mm; }
       header { display: flex; align-items: flex-start; justify-content: space-between; gap: 4mm; border-bottom: 1px solid #1c1917; padding-bottom: 3mm; }
       .brand, header strong, .date, dt { margin: 0; color: #57534e; font-size: 9pt; font-weight: 700; }
       h1 { margin: 1mm 0 0; font-size: 18pt; line-height: 1.1; }
