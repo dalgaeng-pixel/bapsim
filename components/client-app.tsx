@@ -457,11 +457,20 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
                     const orders = planningOrders.filter((order) => order.date === date);
                     const day = new Date(`${date}T00:00:00`).getDay();
                     const weekdayLabel = WEEKDAYS.find((weekday) => weekday.index === day)?.label ?? "";
+                    const isWeekend = day === 0 || day === 6;
+                    const holidayLabel = client ? getHolidayLabelForDate(store.state, client.id, date) : undefined;
+                    const isRedDate = isWeekend || Boolean(holidayLabel);
+                    const dateLabel = holidayLabel ?? (isWeekend ? "주말" : undefined);
                     return (
-                      <tr key={date} className="border-b border-stone-100">
-                        <td className="py-3 font-black">
+                      <tr key={date} className={`border-b ${isRedDate ? "border-red-100 bg-red-50/70" : "border-stone-100"}`}>
+                        <td className={`py-3 font-black ${isRedDate ? "text-bapsim-red" : "text-stone-900"}`}>
                           {date.slice(5)}
-                          <span className="ml-1 text-xs text-stone-500">{weekdayLabel}</span>
+                          <span className={`ml-1 text-xs ${isRedDate ? "text-bapsim-red" : "text-stone-500"}`}>{weekdayLabel}</span>
+                          {dateLabel ? (
+                            <span className="ml-2 inline-flex rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-black text-bapsim-red">
+                              {dateLabel}
+                            </span>
+                          ) : null}
                         </td>
                         {mealTypes.map((mealType) => {
                           const order = orders.find((item) => item.mealTypeId === mealType.id);
@@ -471,13 +480,13 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
                           return (
                             <td key={mealType.id} className="px-2 py-2">
                               <input
-                                className="focus-ring h-10 w-full rounded-md border border-stone-300 text-center font-black"
+                                className={`focus-ring h-10 w-full rounded-md border text-center font-black ${isRedDate ? "border-red-200 bg-white text-bapsim-red" : "border-stone-300"}`}
                                 type="number"
                                 min={0}
                                 value={quantityDrafts[slotKey(order)] ?? order.finalQuantity}
                                 onChange={(event) => setDraft(order, Number(event.target.value) || 0)}
                               />
-                              <p className="mt-1 text-center text-[11px] font-bold text-stone-400">
+                              <p className={`mt-1 text-center text-[11px] font-bold ${isRedDate ? "text-red-500" : "text-stone-400"}`}>
                                 기본 {order.baseQuantity} / {orderStatusLabel(order.status)}
                               </p>
                             </td>

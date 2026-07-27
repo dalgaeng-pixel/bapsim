@@ -196,3 +196,7 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Admin `Settings > Holiday Management` registers a vacation or temporary public holiday by date range, all clients or selected delivery locations, and lunch/dinner selection. It writes existing `holidays` rows with an encoded `category`, so no Supabase migration is required. Registered entries can be deleted from the same panel.
 - Client today/tomorrow sections now show a prominent date and weekday header. Weekends and legal or administrator-registered holidays use red styling and a clear label. Holidays are locked at zero for customer changes; administrator delivery corrections remain the path for actual exceptional deliveries.
 - Delivery print now matches AL006 sheets: six slips in a 2x3 grid, each 99mm x 93mm, 2.5mm horizontal gap, 7mm vertical gap, 4.5mm side padding, and 2mm top/bottom padding. The dashed cut line remains for plain-A4 printing. Browser print should use A4, scale 100%, and margins none for label stock.
+## Weekly Schedule Holiday Highlight (2026-07-27)
+
+- The client `Weekly Schedule` table now applies the same calendar rule used by the today/tomorrow screen. Saturdays, Sundays, Korean public holidays, and administrator-registered closure days use a pale red row, red date and quantity styling, and a visible `주말` or holiday-name label.
+- This is display-only: existing automatic zero-meal behavior and customer quantity editing rules are unchanged.
