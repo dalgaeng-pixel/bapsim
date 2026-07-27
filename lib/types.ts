@@ -12,6 +12,7 @@ export type RequestType =
   | "default_quantity_update";
 export type NotificationTarget = "admin" | "client";
 export type HolidayRuleType = "specific_date" | "monthly_day" | "monthly_last_day";
+export type HolidayCategory = "vacation" | "temporary_holiday";
 export type AuditAction =
   | "create_client"
   | "update_client"
@@ -34,7 +35,8 @@ export type AuditAction =
   | "update_contact_access_group"
   | "reset_contact_access_group_pin"
   | "delete_contact_access_group"
-  | "update_transaction_statement_remark";
+  | "update_transaction_statement_remark"
+  | "update_holiday_schedule";
 
 export interface SettlementAccount {
   id: string;
@@ -178,6 +180,7 @@ export interface Holiday {
   ruleType?: HolidayRuleType;
   mealTypeIds?: string[];
   monthDay?: number;
+  category?: HolidayCategory;
   enabled?: boolean;
 }
 

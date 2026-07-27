@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTime, isPastCutoffForDate, todayKey } from "@/lib/date";
 import { createInitialState } from "@/lib/seed";
 import {
+  addDays,
   buildBaseOrder,
   buildDefaultQuantitiesFromWeekly,
+  createHolidayRule,
   createLocalId,
   enabledMealTypes,
   getBaseQuantity,
@@ -31,12 +33,22 @@ import type {
   DailyMealOrder,
   OrderChangeLog,
   Holiday,
+  HolidayCategory,
   OvertimeMealEntry
 } from "@/lib/types";
 
 const STORAGE_KEY = "bapsim-meal-manager-state-v2";
 
 type StorageMode = "local" | "supabase" | "supabase-error";
+
+type HolidayClosureInput = {
+  category: HolidayCategory;
+  startDate: string;
+  endDate: string;
+  appliesToAll: boolean;
+  clientIds: string[];
+  mealTypeIds: string[];
+};
 
 type RemoteStateResponse = {
   configured: boolean;
@@ -800,6 +812,109 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         return {
           ...previous,
           holidays: [holiday, ...previous.holidays]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const saveHolidayClosures = useCallback(
+    (input: HolidayClosureInput, adminName: string) => {
+      const startDate = input.startDate;
+      const endDate = input.endDate >= input.startDate ? input.endDate : input.startDate;
+      const clientIds = input.appliesToAll ? [undefined] : [...new Set(input.clientIds)];
+      if (!startDate || clientIds.length === 0 || input.mealTypeIds.length === 0) {
+        return;
+      }
+
+      const dates: string[] = [];
+      for (let date = startDate; date <= endDate; date = addDays(date, 1)) {
+        dates.push(date);
+      }
+
+      const name = input.category === "vacation" ? "휴가" : "임시공휴일";
+      commit((previous) => {
+        const holidays = [...previous.holidays];
+
+        for (const date of dates) {
+          for (const clientId of clientIds) {
+            const existingIndex = holidays.findIndex(
+              (holiday) =>
+                holiday.date === date &&
+                holiday.clientId === clientId &&
+                holiday.ruleType !== "monthly_day" &&
+                holiday.ruleType !== "monthly_last_day"
+            );
+            const closure = createHolidayRule({
+              id: existingIndex >= 0 ? holidays[existingIndex].id : undefined,
+              clientId,
+              date,
+              name,
+              category: input.category,
+              ruleType: "specific_date",
+              mealTypeIds: input.mealTypeIds,
+              monthDay: Number(date.slice(-2))
+            });
+
+            if (existingIndex >= 0) {
+              holidays[existingIndex] = closure;
+            } else {
+              holidays.push(closure);
+            }
+          }
+        }
+
+        const targetLabel = input.appliesToAll
+          ? "전체 거래처"
+          : clientIds
+              .map((clientId) => previous.clients.find((client) => client.id === clientId)?.name)
+              .filter(Boolean)
+              .join(", ");
+
+        return {
+          ...previous,
+          holidays,
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_holiday_schedule",
+              adminName,
+              targetLabel: targetLabel || "휴일 관리",
+              detail: `${name} ${startDate}${startDate === endDate ? "" : `~${endDate}`} 등록`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
+
+  const deleteHolidayClosure = useCallback(
+    (holidayId: string, adminName: string) => {
+      commit((previous) => {
+        const holiday = previous.holidays.find((item) => item.id === holidayId);
+        if (!holiday || !holiday.category) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          holidays: previous.holidays.filter((item) => item.id !== holidayId),
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_holiday_schedule",
+              adminName,
+              targetLabel: holiday.clientId
+                ? previous.clients.find((client) => client.id === holiday.clientId)?.name ?? "선택 거래처"
+                : "전체 거래처",
+              detail: `${holiday.name} ${holiday.date} 삭제`,
+              createdAt: new Date().toISOString()
+            },
+            ...previous.auditLogs
+          ]
         };
       });
     },
@@ -1643,7 +1758,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
 
         if (exceptionRules) {
           nextHolidays = [
-            ...previous.holidays.filter((item) => !(item.clientId === clientId && item.ruleType)),
+            ...previous.holidays.filter((item) => !(item.clientId === clientId && item.ruleType && !item.category)),
             ...exceptionRules.map((rule) => ({
               ...rule,
               id: rule.id || id("holiday"),
@@ -1856,6 +1971,8 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     resetClientPin,
     submitQuantityRequest,
     addHoliday,
+    saveHolidayClosures,
+    deleteHolidayClosure,
     deleteClientRecord
   };
 }

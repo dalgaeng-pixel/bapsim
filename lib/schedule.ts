@@ -1,4 +1,5 @@
 import { isPastCutoffForDate, todayKey } from "@/lib/date";
+import { getKoreanPublicHolidayName, isKoreanPublicHoliday } from "@/lib/korean-public-holidays";
 import { getClientsForSettlementAccount, normalizeContactGroupState } from "@/lib/contact-groups";
 import type {
   AppState,
@@ -261,6 +262,11 @@ export function getBaseQuantity(state: AppState, clientId: string, mealTypeId: s
   );
 }
 
+export function getHolidayLabelForDate(state: AppState, clientId: string, date: string) {
+  const rule = state.holidays.find((holiday) => holidayMatchesDate(holiday, clientId, date));
+  return rule?.name ?? getKoreanPublicHolidayName(date);
+}
+
 export function getExceptionLabel(
   state: AppState,
   clientId: string,
@@ -268,19 +274,14 @@ export function getExceptionLabel(
   date: string
 ) {
   const rule = state.holidays.find((holiday) => holidayMatches(holiday, clientId, mealTypeId, date));
-  return rule?.name;
+  return rule?.name ?? getKoreanPublicHolidayName(date);
 }
 
 export function isNoMealByRule(state: AppState, clientId: string, mealTypeId: string, date: string) {
-  return state.holidays.some((holiday) => holidayMatches(holiday, clientId, mealTypeId, date));
+  return isKoreanPublicHoliday(date) || state.holidays.some((holiday) => holidayMatches(holiday, clientId, mealTypeId, date));
 }
 
-export function holidayMatches(
-  holiday: Holiday,
-  clientId: string,
-  mealTypeId: string,
-  date: string
-) {
+function holidayMatchesDate(holiday: Holiday, clientId: string, date: string) {
   if (holiday.enabled === false) {
     return false;
   }
@@ -289,25 +290,29 @@ export function holidayMatches(
     return false;
   }
 
-  if (holiday.mealTypeIds?.length && !holiday.mealTypeIds.includes(mealTypeId)) {
-    return false;
-  }
-
-  if (!holiday.ruleType) {
-    return holiday.date === date;
-  }
-
-  if (holiday.ruleType === "specific_date") {
+  if (!holiday.ruleType || holiday.ruleType === "specific_date") {
     return holiday.date === date;
   }
 
   const day = Number(date.split("-")[2]);
-
   if (holiday.ruleType === "monthly_day") {
     return day === holiday.monthDay;
   }
 
   return day === getLastDayOfMonth(date);
+}
+
+export function holidayMatches(
+  holiday: Holiday,
+  clientId: string,
+  mealTypeId: string,
+  date: string
+) {
+  if (!holidayMatchesDate(holiday, clientId, date)) {
+    return false;
+  }
+
+  return !holiday.mealTypeIds?.length || holiday.mealTypeIds.includes(mealTypeId);
 }
 
 export function getOrderForSlot(
@@ -321,7 +326,21 @@ export function getOrderForSlot(
   );
 
   if (existing) {
-    return existing;
+    if (existing.isAdminCorrection || (existing.status !== "normal" && existing.status !== "holiday")) {
+      return existing;
+    }
+
+    const baseQuantity = getBaseQuantity(state, clientId, mealTypeId, date);
+    const noMealLabel = getExceptionLabel(state, clientId, mealTypeId, date);
+    const status = baseQuantity === 0 ? "holiday" : "normal";
+
+    return {
+      ...existing,
+      baseQuantity,
+      finalQuantity: baseQuantity,
+      status,
+      memo: status === "holiday" ? noMealLabel ?? existing.memo ?? "기본 안먹음" : existing.memo
+    };
   }
 
   return buildBaseOrder(state, clientId, mealTypeId, date);
@@ -694,6 +713,7 @@ export function encodeHolidayName(holiday: Holiday) {
     ruleType: holiday.ruleType,
     mealTypeIds: holiday.mealTypeIds ?? [],
     monthDay: holiday.monthDay,
+    category: holiday.category,
     enabled: holiday.enabled !== false
   })}`;
 }
@@ -824,6 +844,7 @@ export function decodeHoliday(row: { id: string; holiday_date: string; name: str
       ruleType?: Holiday["ruleType"];
       mealTypeIds?: string[];
       monthDay?: number;
+      category?: Holiday["category"];
       enabled?: boolean;
     };
 
@@ -835,6 +856,7 @@ export function decodeHoliday(row: { id: string; holiday_date: string; name: str
       ruleType: parsed.ruleType,
       mealTypeIds: parsed.mealTypeIds,
       monthDay: parsed.monthDay,
+      category: parsed.category,
       enabled: parsed.enabled
     });
   } catch {
@@ -856,6 +878,10 @@ export function normalizeHoliday(holiday: Holiday): Holiday {
     ...holiday,
     name: holiday.name || "식사 안먹음",
     mealTypeIds: holiday.mealTypeIds ?? [],
+    category:
+      holiday.category === "vacation" || holiday.category === "temporary_holiday"
+        ? holiday.category
+        : undefined,
     enabled: holiday.enabled !== false
   };
 }

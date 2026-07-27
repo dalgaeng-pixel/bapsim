@@ -261,10 +261,10 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
 
     printDocument.open();
     printDocument.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>밥심 배달표</title><style>
-      @page { size: A4 portrait; margin: 8mm; }
+      @page { size: A4 portrait; margin: 0; }
       * { box-sizing: border-box; }
       body { margin: 0; color: #1c1917; font-family: Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
-      .page { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); width: 194mm; min-height: 281mm; break-after: page; page-break-after: always; }
+      .page { display: grid; grid-template-columns: repeat(2, 99mm); grid-template-rows: repeat(3, 93mm); column-gap: 2.5mm; row-gap: 7mm; width: 210mm; height: 297mm; padding: 2mm 4.5mm; break-after: page; page-break-after: always; }
       .page:last-child { break-after: auto; page-break-after: auto; }
       .card { min-width: 0; min-height: 0; overflow: hidden; border: 1px dashed #78716c; padding: 4.5mm; }
       header { display: flex; align-items: flex-start; justify-content: space-between; gap: 4mm; border-bottom: 1px solid #1c1917; padding-bottom: 3mm; }
@@ -877,6 +877,7 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
                 </button>
               </div>
               <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  <HolidayManager adminName={adminName} state={state} store={store} />
                 <div className="rounded-lg border border-stone-200 p-4">
                   <h3 className="font-black">식사 구분</h3>
                   {state.mealTypes.map((mealType) => (
@@ -1355,6 +1356,217 @@ const emptyClientForm: ClientFormState = {
   exceptionRules: []
 };
 
+function HolidayManager({
+  adminName,
+  state,
+  store
+}: {
+  adminName: string;
+  state: AppState;
+  store: ReturnType<typeof useBapsimStore>;
+}) {
+  const mealTypes = enabledMealTypes(state);
+  const [category, setCategory] = useState<"vacation" | "temporary_holiday">("vacation");
+  const [startDate, setStartDate] = useState(todayKey());
+  const [endDate, setEndDate] = useState(todayKey());
+  const [appliesToAll, setAppliesToAll] = useState(true);
+  const [clientIds, setClientIds] = useState<string[]>([]);
+  const [mealTypeIds, setMealTypeIds] = useState<string[]>(() => mealTypes.map((mealType) => mealType.id));
+
+  const closures = state.holidays
+    .filter((holiday) => holiday.category === "vacation" || holiday.category === "temporary_holiday")
+    .sort(
+      (left, right) =>
+        left.date.localeCompare(right.date) ||
+        (left.clientId ? state.clients.find((client) => client.id === left.clientId)?.deliveryOrder ?? 0 : -1) -
+          (right.clientId ? state.clients.find((client) => client.id === right.clientId)?.deliveryOrder ?? 0 : -1)
+    );
+
+  const toggleClient = (clientId: string) => {
+    setClientIds((current) =>
+      current.includes(clientId) ? current.filter((item) => item !== clientId) : [...current, clientId]
+    );
+  };
+
+  const toggleMeal = (mealTypeId: string) => {
+    setMealTypeIds((current) =>
+      current.includes(mealTypeId)
+        ? current.filter((item) => item !== mealTypeId)
+        : [...current, mealTypeId]
+    );
+  };
+
+  const save = () => {
+    if (!appliesToAll && clientIds.length === 0) {
+      window.alert("휴가를 적용할 거래처를 선택하세요.");
+      return;
+    }
+
+    if (mealTypeIds.length === 0) {
+      window.alert("적용할 식사를 하나 이상 선택하세요.");
+      return;
+    }
+
+    store.saveHolidayClosures(
+      { category, startDate, endDate, appliesToAll, clientIds, mealTypeIds },
+      adminName
+    );
+    window.alert(`${category === "vacation" ? "휴가" : "임시공휴일"} 일정을 등록했습니다.`);
+  };
+
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50 p-4 xl:col-span-2">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="flex items-center gap-2 font-black text-red-950">
+            <CalendarDays size={18} />
+            휴일 관리
+          </h3>
+          <p className="mt-1 text-sm font-semibold text-red-800">
+            법정공휴일과 대체공휴일은 자동으로 0명 처리됩니다. 휴가와 임시공휴일만 여기서 등록하세요.
+          </p>
+        </div>
+        <span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">
+          점심·저녁 자동 반영
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+        <label className="block">
+          <span className="text-xs font-black text-stone-600">구분</span>
+          <select
+            className="focus-ring mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2 font-bold"
+            value={category}
+            onChange={(event) => setCategory(event.target.value as "vacation" | "temporary_holiday")}
+          >
+            <option value="vacation">휴가</option>
+            <option value="temporary_holiday">임시공휴일</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="text-xs font-black text-stone-600">시작일</span>
+          <input
+            className="focus-ring mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2 font-bold"
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black text-stone-600">종료일</span>
+          <input
+            className="focus-ring mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2 font-bold"
+            type="date"
+            min={startDate}
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="text-xs font-black text-stone-600">적용 범위</span>
+          <select
+            className="focus-ring mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2 font-bold"
+            value={appliesToAll ? "all" : "selected"}
+            onChange={(event) => setAppliesToAll(event.target.value === "all")}
+          >
+            <option value="all">전체 거래처</option>
+            <option value="selected">선택 거래처</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {mealTypes.map((mealType) => {
+          const selected = mealTypeIds.includes(mealType.id);
+          return (
+            <button
+              key={mealType.id}
+              type="button"
+              className={`focus-ring rounded-md border px-3 py-2 text-sm font-black ${
+                selected ? "border-red-700 bg-bapsim-red text-white" : "border-stone-300 bg-white text-stone-700"
+              }`}
+              onClick={() => toggleMeal(mealType.id)}
+            >
+              {mealType.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {!appliesToAll ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {state.clients
+            .filter((client) => client.status === "active")
+            .sort((left, right) => left.deliveryOrder - right.deliveryOrder)
+            .map((client) => {
+              const selected = clientIds.includes(client.id);
+              return (
+                <button
+                  key={client.id}
+                  type="button"
+                  className={`focus-ring flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm font-black ${
+                    selected ? "border-red-300 bg-white text-bapsim-red" : "border-stone-200 bg-white text-stone-700"
+                  }`}
+                  onClick={() => toggleClient(client.id)}
+                >
+                  <span>{client.name}</span>
+                  <Check size={16} className={selected ? "opacity-100" : "opacity-0"} />
+                </button>
+              );
+            })}
+        </div>
+      ) : null}
+
+      <button
+        className="focus-ring mt-4 inline-flex items-center gap-2 rounded-md bg-bapsim-red px-4 py-3 text-sm font-black text-white"
+        onClick={save}
+      >
+        <Save size={16} />
+        휴일 등록
+      </button>
+
+      <div className="mt-5 border-t border-red-200 pt-4">
+        <h4 className="text-sm font-black text-red-950">등록된 휴가·임시공휴일</h4>
+        {closures.length === 0 ? (
+          <p className="mt-2 text-sm font-semibold text-red-800">등록된 일정이 없습니다.</p>
+        ) : (
+          <div className="mt-2 max-h-64 space-y-2 overflow-y-auto pr-1">
+            {closures.map((holiday) => {
+              const client = state.clients.find((item) => item.id === holiday.clientId);
+              const mealLabels = (holiday.mealTypeIds?.length ? holiday.mealTypeIds : mealTypes.map((item) => item.id))
+                .map((mealTypeId) => mealTypes.find((mealType) => mealType.id === mealTypeId)?.name)
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <div key={holiday.id} className="flex items-center justify-between gap-3 rounded-md border border-red-100 bg-white px-3 py-2">
+                  <div className="min-w-0 text-sm">
+                    <p className="font-black text-stone-900">
+                      {formatKoreanDate(holiday.date)} · {holiday.category === "vacation" ? "휴가" : "임시공휴일"}
+                    </p>
+                    <p className="truncate font-semibold text-stone-600">
+                      {client?.name ?? "전체 거래처"} · {mealLabels || "점심·저녁"}
+                    </p>
+                  </div>
+                  <button
+                    className="focus-ring grid h-9 w-9 shrink-0 place-items-center rounded-md border border-red-200 bg-white text-bapsim-red"
+                    title="휴일 일정 삭제"
+                    onClick={() => {
+                      if (window.confirm(`${formatKoreanDate(holiday.date)} 휴일 일정을 삭제할까요?`)) {
+                        store.deleteHolidayClosure(holiday.id, adminName);
+                      }
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 function ClientManager({
   adminName,
   store
@@ -1429,7 +1641,7 @@ function ClientManager({
       contactAccessGroupId: store.state.contactAccessGroupMembers.find((member) => member.clientId === client.id)?.contactAccessGroupId ?? "",
       weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
       exceptionRules: store.state.holidays.filter(
-        (holiday) => holiday.clientId === client.id && holiday.ruleType
+        (holiday) => holiday.clientId === client.id && holiday.ruleType && !holiday.category
       )
     });
     setError("");

@@ -1,6 +1,6 @@
 # Developer Notes
 
-Last updated: 2026-07-20 KST
+Last updated: 2026-07-27 KST
 
 ## Purpose
 
@@ -188,3 +188,11 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Administrators enable it per location in the client create/edit form with the `야근 인원 등록 사용` checkbox. The client card also displays whether the option is enabled.
 - Only enabled locations receive the menu through a shared contact link. Both the client UI and the save routine enforce the setting, so a hidden or disabled location cannot submit overtime entries.
 - The flag is persisted in the existing internal client-settings holiday row together with delivery start date and meal supply type; no additional Supabase SQL migration is required.
+
+## Korean Holidays And Label Layout (2026-07-27)
+
+- Korean legal public holidays and substitute holidays now set both lunch and dinner base quantities to `0`. The generated calendar covers 2024-2050 and corrects the full three-day Seollal and Chuseok periods; it is stored in `lib/korean-public-holidays.ts` for a small client bundle.
+- The source generator is `scripts/generate-korean-public-holidays.mjs`, using `date-holidays` as a development dependency. Run `npm run generate:korean-holidays` after updating the package data or when holiday law changes.
+- Admin `Settings > Holiday Management` registers a vacation or temporary public holiday by date range, all clients or selected delivery locations, and lunch/dinner selection. It writes existing `holidays` rows with an encoded `category`, so no Supabase migration is required. Registered entries can be deleted from the same panel.
+- Client today/tomorrow sections now show a prominent date and weekday header. Weekends and legal or administrator-registered holidays use red styling and a clear label. Holidays are locked at zero for customer changes; administrator delivery corrections remain the path for actual exceptional deliveries.
+- Delivery print now matches AL006 sheets: six slips in a 2x3 grid, each 99mm x 93mm, 2.5mm horizontal gap, 7mm vertical gap, 4.5mm side padding, and 2mm top/bottom padding. The dashed cut line remains for plain-A4 printing. Browser print should use A4, scale 100%, and margins none for label stock.

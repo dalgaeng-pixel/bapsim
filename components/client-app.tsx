@@ -22,6 +22,9 @@ import { usePWAInstall } from "@/lib/use-pwa-install";
 import {
   enabledMealTypes,
   getClientPlanningDates,
+  getExceptionLabel,
+  getHolidayLabelForDate,
+  getWeekday,
   getTomorrowKey,
   getOvertimeMealEntry,
   isOvertimeMealRegistrationDay,
@@ -332,6 +335,8 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
             <DateMealSection
               title="오늘"
               date={today}
+              clientId={client.id}
+              state={store.state}
               orders={todayOrders}
               mealTypes={mealTypes}
               quantityDrafts={quantityDrafts}
@@ -361,6 +366,8 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
             <DateMealSection
               title="내일"
               date={tomorrow}
+              clientId={client.id}
+              state={store.state}
               orders={tomorrowOrders}
               mealTypes={mealTypes}
               quantityDrafts={quantityDrafts}
@@ -782,6 +789,8 @@ function OvertimeMealSection({
 function DateMealSection({
   title,
   date,
+  clientId,
+  state,
   orders,
   mealTypes,
   quantityDrafts,
@@ -793,6 +802,8 @@ function DateMealSection({
 }: {
   title: string;
   date: string;
+  clientId: string;
+  state: AppState;
   orders: DailyMealOrder[];
   mealTypes: ReturnType<typeof enabledMealTypes>;
   quantityDrafts: Record<string, number>;
@@ -802,18 +813,40 @@ function DateMealSection({
   onSave: (order: DailyMealOrder) => void;
   onReject: (order: DailyMealOrder) => void;
 }) {
+  const weekday = getWeekday(date);
+  const isWeekend = weekday === 0 || weekday === 6;
+  const holidayLabel = getHolidayLabelForDate(state, clientId, date);
+  const isRedDate = isWeekend || !!holidayLabel;
+  const weekdayLabel = WEEKDAYS.find((item) => item.index === weekday)?.label ?? "";
+
   return (
     <section className="space-y-3">
-      <div>
-        <h2 className="text-xl font-black">{title}</h2>
-        <p className="text-sm font-semibold text-stone-500">{formatKoreanDate(date)}</p>
+      <div className={`rounded-lg border p-4 ${isRedDate ? "border-red-200 bg-red-50" : "border-stone-200 bg-stone-50"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className={`text-sm font-black ${isRedDate ? "text-bapsim-red" : "text-stone-500"}`}>{title}</p>
+            <h2 className={`mt-1 text-2xl font-black ${isRedDate ? "text-red-950" : "text-stone-900"}`}>
+              {formatKoreanDate(date)} ({weekdayLabel})
+            </h2>
+          </div>
+          {holidayLabel ? (
+            <span className="rounded-full border border-red-200 bg-white px-3 py-1 text-sm font-black text-bapsim-red">
+              공휴일 · {holidayLabel}
+            </span>
+          ) : isWeekend ? (
+            <span className="rounded-full border border-red-200 bg-white px-3 py-1 text-sm font-black text-bapsim-red">주말</span>
+          ) : null}
+        </div>
       </div>
+
       <div className="grid gap-3 md:grid-cols-2">
         {orders.map((order) => {
           const mealType = mealTypes.find((item) => item.id === order.mealTypeId);
           const cutoffPassed = isPastCutoffForDate(order.date, mealType?.cutoffTime);
           const key = slotKey(order);
           const draft = quantityDrafts[key] ?? order.finalQuantity;
+          const noMealLabel = getExceptionLabel(state, clientId, order.mealTypeId, order.date);
+          const holidayLocked = Boolean(noMealLabel) && order.status === "holiday";
 
           return (
             <div key={key} className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
@@ -822,7 +855,7 @@ function DateMealSection({
                   <p className="text-sm font-bold text-stone-500">{mealType?.name ?? "식사"}</p>
                   <p className="mt-2 text-4xl font-black text-bapsim-red">{order.finalQuantity}개</p>
                   <p className="mt-2 text-sm font-semibold text-stone-600">
-                    기본 {order.baseQuantity}개 · 마감 {mealType?.cutoffTime ?? "10:00"}
+                    {holidayLocked ? `${noMealLabel} · 식수 0개` : `기본 ${order.baseQuantity}개 · 마감 ${mealType?.cutoffTime ?? "10:00"}`}
                   </p>
                 </div>
                 <span
@@ -832,47 +865,55 @@ function DateMealSection({
                 </span>
               </div>
 
-              <div className="mt-5 grid grid-cols-[44px_1fr_44px] items-center gap-3">
-                <button
-                  className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
-                  onClick={() => onDraftChange(order, Math.max(0, draft - 1))}
-                >
-                  <Minus size={18} />
-                </button>
-                <input
-                  className="focus-ring h-11 w-full min-w-0 rounded-md border border-stone-300 text-center text-xl font-black"
-                  inputMode="numeric"
-                  value={draft}
-                  onChange={(event) => onDraftChange(order, Number(event.target.value.replace(/\D/g, "")) || 0)}
-                />
-                <button
-                  className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
-                  onClick={() => onDraftChange(order, draft + 1)}
-                >
-                  <Plus size={18} />
-                </button>
-              </div>
-              <input
-                className="focus-ring mt-3 w-full rounded-md border border-stone-300 px-3 py-3 text-sm"
-                placeholder="메모"
-                value={memoDrafts[key] ?? ""}
-                onChange={(event) => onMemoChange(order, event.target.value)}
-              />
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <button
-                  className="focus-ring flex items-center justify-center gap-2 rounded-md bg-stone-700 px-3 py-3 text-sm font-black text-white"
-                  onClick={() => onSave(order)}
-                >
-                  <Send size={16} />
-                  {cutoffPassed ? "변경 요청" : "변경 저장"}
-                </button>
-                <button
-                  className="focus-ring rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
-                  onClick={() => onReject(order)}
-                >
-                  안먹음
-                </button>
-              </div>
+              {holidayLocked ? (
+                <p className="mt-5 rounded-md border border-red-100 bg-red-50 p-3 text-sm font-bold text-bapsim-red">
+                  공휴일 또는 등록된 휴일은 식수 변경 없이 0명으로 처리됩니다.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-5 grid grid-cols-[44px_1fr_44px] items-center gap-3">
+                    <button
+                      className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
+                      onClick={() => onDraftChange(order, Math.max(0, draft - 1))}
+                    >
+                      <Minus size={18} />
+                    </button>
+                    <input
+                      className="focus-ring h-11 w-full min-w-0 rounded-md border border-stone-300 text-center text-xl font-black"
+                      inputMode="numeric"
+                      value={draft}
+                      onChange={(event) => onDraftChange(order, Number(event.target.value.replace(/\D/g, "")) || 0)}
+                    />
+                    <button
+                      className="focus-ring grid h-11 place-items-center rounded-md border border-stone-300 bg-white"
+                      onClick={() => onDraftChange(order, draft + 1)}
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                  <input
+                    className="focus-ring mt-3 w-full rounded-md border border-stone-300 px-3 py-3 text-sm"
+                    placeholder="메모"
+                    value={memoDrafts[key] ?? ""}
+                    onChange={(event) => onMemoChange(order, event.target.value)}
+                  />
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      className="focus-ring flex items-center justify-center gap-2 rounded-md bg-stone-700 px-3 py-3 text-sm font-black text-white"
+                      onClick={() => onSave(order)}
+                    >
+                      <Send size={16} />
+                      {cutoffPassed ? "변경 요청" : "변경 저장"}
+                    </button>
+                    <button
+                      className="focus-ring rounded-md border border-bapsim-red bg-white px-3 py-3 text-sm font-black text-bapsim-red"
+                      onClick={() => onReject(order)}
+                    >
+                      안먹음
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
@@ -880,7 +921,6 @@ function DateMealSection({
     </section>
   );
 }
-
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md bg-stone-50 p-3">
