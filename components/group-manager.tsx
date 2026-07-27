@@ -89,8 +89,11 @@ export function GroupManager({ adminName, store }: { adminName: string; store: R
 
   const copyInviteLink = (group: ContactAccessGroup) => {
     const link = `${window.location.origin}/client/${group.inviteCode}`;
-    const message = `밥심 식사배달관리 담당자 전용 링크입니다.\n\n▶ 접속 링크: ${link}\n▶ 보안 PIN: ${group.invitePin}`;
-    navigator.clipboard.writeText(message).then(() => alert("담당자 링크와 PIN이 복사되었습니다."));
+    const message = `저희 밥심을 이용해주셔서 감사합니다. 아래 링크를 클릭하시면 식사 관리 화면으로 이동됩니다. 변동사항이 있을 때만 입력해 주세요.\n\n▶ 전용 접속 링크: ${link}\n▶ 보안 PIN 번호: ${group.invitePin}`;
+
+    navigator.clipboard.writeText(message).then(() => {
+      alert("초대 링크와 PIN 번호, 안내 메시지가 복사되었습니다.\n카카오톡 등에 바로 붙여넣기 하시면 됩니다.");
+    });
   };
 
   const confirmSettlementAccountDeletion = (

@@ -167,3 +167,9 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Delivery printing now creates one A4 portrait page per delivery location instead of mixing locations on the same page.
 - Each page repeats the identical delivery slip six times in a 2-column by 3-row layout. The delivery order number remains the same on all six copies for that location.
 - The existing delivery details, cut borders, date, meal, quantity, address, and delivery memo remain unchanged.
+
+
+## Contact Link Copy Guidance (2026-07-27)
+
+- The settlement/contact-manager link copy action now includes the same ready-to-send customer guidance as the client link copy action: service message, access URL, and PIN.
+- Its completion alert also confirms that the link, PIN, and guidance message can be pasted directly into KakaoTalk or another messenger.
