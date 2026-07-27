@@ -6,6 +6,7 @@ grant all on public.clients to service_role;
 grant all on public.meal_types to service_role;
 grant all on public.default_meal_quantities to service_role;
 grant all on public.daily_meal_orders to service_role;
+grant all on public.overtime_meal_entries to service_role;
 grant all on public.order_change_logs to service_role;
 grant all on public.change_requests to service_role;
 grant all on public.holidays to service_role;
@@ -30,6 +31,9 @@ create policy "service_role_all_default_meal_quantities" on public.default_meal_
   for all to service_role using (true) with check (true);
 
 create policy "service_role_all_daily_meal_orders" on public.daily_meal_orders
+  for all to service_role using (true) with check (true);
+
+create policy "service_role_all_overtime_meal_entries" on public.overtime_meal_entries
   for all to service_role using (true) with check (true);
 
 create policy "service_role_all_order_change_logs" on public.order_change_logs

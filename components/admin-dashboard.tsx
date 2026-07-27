@@ -304,6 +304,13 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
   );
 
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
+  const overtimeEntries = state.overtimeMealEntries
+    .filter((entry) => entry.date === selectedDate)
+    .sort(
+      (left, right) =>
+        (store.getClient(left.clientId)?.deliveryOrder ?? Number.MAX_SAFE_INTEGER) -
+        (store.getClient(right.clientId)?.deliveryOrder ?? Number.MAX_SAFE_INTEGER)
+    );
   const reviewOrders = state.orders.filter(
     (order) =>
       order.date === selectedDate &&
@@ -531,6 +538,41 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
 
           {tab === "important" ? (
             <div className="grid gap-4 xl:grid-cols-2">
+              <div className="rounded-lg border border-sky-200 bg-sky-50 p-4 shadow-soft xl:col-span-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black text-sky-950">야근 인원 등록</h2>
+                    <p className="mt-1 text-sm font-semibold text-sky-800">
+                      {formatKoreanDate(selectedDate)} 석식에 추가되는 인원입니다. 등록 또는 수정 시 관리자 알림과 푸시가 전송됩니다.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-sky-900">
+                    {overtimeEntries.length}곳 등록
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {!state.overtimeMealStorageReady ? (
+                    <EmptyState label="야근 인원 저장 테이블을 준비 중입니다. Supabase 마이그레이션을 실행해 주세요." />
+                  ) : overtimeEntries.length === 0 ? (
+                    <EmptyState label="등록된 야근 인원이 없습니다." />
+                  ) : (
+                    overtimeEntries.map((entry) => {
+                      const client = store.getClient(entry.clientId);
+                      return (
+                        <div key={entry.id} className="flex items-center justify-between gap-3 rounded-md border border-sky-200 bg-white px-3 py-3">
+                          <div>
+                            <p className="font-black text-stone-900">{client?.name ?? "삭제된 거래처"}</p>
+                            <p className="mt-1 text-xs font-bold text-stone-500">
+                              {new Date(entry.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 저장
+                            </p>
+                          </div>
+                          <span className="text-xl font-black text-bapsim-red">{entry.quantity}명</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
               <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft">
                 <h2 className="text-xl font-black">승인 대기 요청</h2>
                 <div className="mt-4 space-y-3">

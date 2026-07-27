@@ -199,6 +199,7 @@ export function createInitialState(): AppState {
     groupStorageReady: true,
     settlementPricingStorageReady: true,
     deliveryCorrectionStorageReady: true,
+    overtimeMealStorageReady: true,
     supplierProfileStorageReady: true,
     settlementAccountDetailsStorageReady: true,
     transactionStatementRemarksStorageReady: true,
@@ -216,6 +217,7 @@ export function createInitialState(): AppState {
     mealTypes,
     defaultQuantities,
     orders,
+    overtimeMealEntries: [],
     orderChangeLogs: [
       {
         id: ids.logs[0],

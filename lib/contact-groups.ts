@@ -102,6 +102,7 @@ export function filterStateForContactAccessGroup(state: AppState, contactAccessG
     ),
     defaultQuantities: state.defaultQuantities.filter((item) => clientIds.has(item.clientId)),
     orders: state.orders.filter((item) => clientIds.has(item.clientId)),
+    overtimeMealEntries: state.overtimeMealEntries.filter((item) => clientIds.has(item.clientId)),
     orderChangeLogs: state.orderChangeLogs.filter((item) => clientIds.has(item.clientId)),
     changeRequests: state.changeRequests.filter((item) => clientIds.has(item.clientId)),
     holidays: state.holidays.filter((item) => !item.clientId || clientIds.has(item.clientId)),

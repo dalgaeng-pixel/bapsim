@@ -8,6 +8,7 @@ import {
   Clock,
   Home,
   Minus,
+  Moon,
   Plus,
   Save,
   Send
@@ -22,14 +23,17 @@ import {
   enabledMealTypes,
   getClientPlanningDates,
   getTomorrowKey,
+  getOvertimeMealEntry,
+  isOvertimeMealRegistrationDay,
   mealSupplyTypeLabel,
   WEEKDAYS
 } from "@/lib/schedule";
 import type { AppState, ContactAccessGroup, DailyMealOrder } from "@/lib/types";
 
-type ClientTab = "today" | "week" | "history" | "profile" | "alerts";
+type ClientTab = "today" | "overtime" | "week" | "history" | "profile" | "alerts";
 
 const clientTabs = [
+  { id: "overtime", label: "야근 인원", icon: Moon },
   { id: "today", label: "오늘/내일", icon: Home },
   { id: "week", label: "주간 설정", icon: CalendarDays },
   { id: "history", label: "변경 내역", icon: Clock },
@@ -50,6 +54,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
   const [selectedClientId, setSelectedClientId] = useState("");
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, number>>({});
   const [memoDrafts, setMemoDrafts] = useState<Record<string, string>>({});
+  const [overtimeDraft, setOvertimeDraft] = useState(0);
   const [infoMode, setInfoMode] = useState<"address" | "contact">("address");
   const [address, setAddress] = useState("");
   const [addressDetail, setAddressDetail] = useState("");
@@ -63,6 +68,11 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
   const tomorrow = getTomorrowKey(today);
   const planningDates = useMemo(() => getClientPlanningDates(today), [today]);
   const mealTypes = enabledMealTypes(store.state);
+  const overtimeEntry = useMemo(
+    () => (client ? getOvertimeMealEntry(store.state, client.id, today) : undefined),
+    [client?.id, store.state.overtimeMealEntries, today]
+  );
+  const overtimeRegistrationAvailable = !!client && isOvertimeMealRegistrationDay(store.state, client.id, today);
 
   const todayOrders = useMemo(
     () => (client ? store.getClientOrdersForDate(client.id, today) : []),
@@ -82,6 +92,10 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
       setSelectedClientId(client.id);
     }
   }, [client, selectedClientId]);
+
+  useEffect(() => {
+    setOvertimeDraft(overtimeEntry?.quantity ?? 0);
+  }, [overtimeEntry?.id, overtimeEntry?.quantity, client?.id]);
 
   useEffect(() => {
     if (contactAccessGroup) {
@@ -270,7 +284,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
   }
 
   return (
-    <main className="min-h-screen pb-24">
+    <main className="min-h-screen pb-36 sm:pb-24">
       <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
           <Logo compact />
@@ -373,6 +387,24 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
               </div>
             ) : null}
           </div>
+        ) : null}
+
+        {tab === "overtime" ? (
+          <OvertimeMealSection
+            date={today}
+            quantity={overtimeDraft}
+            canRegister={overtimeRegistrationAvailable}
+            storageReady={store.state.overtimeMealStorageReady}
+            alreadyRegistered={!!overtimeEntry}
+            onQuantityChange={setOvertimeDraft}
+            onSave={() => {
+              if (!client || !store.state.overtimeMealStorageReady || !overtimeRegistrationAvailable) {
+                return;
+              }
+              store.saveOvertimeMealEntry(client.id, today, overtimeDraft);
+              alert(overtimeEntry ? "야근 인원을 수정했습니다. 관리자에게 알림이 전송됩니다." : "야근 인원을 등록했습니다. 관리자에게 알림이 전송됩니다.");
+            }}
+          />
         ) : null}
 
         {tab === "week" ? (
@@ -637,7 +669,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
       </section>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t border-stone-200 bg-white px-3 py-2">
-        <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1">
+        <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1 sm:grid-cols-6">
           {clientTabs.map((item) => {
             const Icon = item.icon;
             return (
@@ -666,6 +698,75 @@ function ClientHeaderCard({ clientName, address }: { clientName: string; address
       <h2 className="mt-2 text-2xl font-black">{clientName}</h2>
       <p className="mt-1 text-sm font-semibold text-stone-600">{address}</p>
     </div>
+  );
+}
+
+function OvertimeMealSection({
+  date,
+  quantity,
+  canRegister,
+  storageReady,
+  alreadyRegistered,
+  onQuantityChange,
+  onSave
+}: {
+  date: string;
+  quantity: number;
+  canRegister: boolean;
+  storageReady: boolean;
+  alreadyRegistered: boolean;
+  onQuantityChange: (quantity: number) => void;
+  onSave: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
+      <p className="text-sm font-bold text-bapsim-red">오늘 야근 인원</p>
+      <h2 className="mt-2 text-2xl font-black">{formatKoreanDate(date)} 석식 추가</h2>
+      {!storageReady ? (
+        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-900">
+          야근 인원 등록을 준비 중입니다. 관리자에게 데이터 설정을 요청해 주세요.
+        </p>
+      ) : !canRegister ? (
+        <p className="mt-4 rounded-md border border-stone-200 bg-stone-50 p-4 text-sm font-bold text-stone-600">
+          주말 또는 공휴일은 야근 인원을 0명으로 처리합니다.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-sm font-semibold text-stone-600">
+            오늘 석식에 추가할 인원만 등록해 주세요. 야근이 없어도 0명으로 등록하면 관리자에게 알림이 갑니다.
+          </p>
+          <div className="mt-6 grid grid-cols-[48px_1fr_48px] items-center gap-3">
+            <button
+              className="focus-ring grid h-12 place-items-center rounded-md border border-stone-300 bg-white"
+              title="야근 인원 1명 감소"
+              onClick={() => onQuantityChange(Math.max(0, quantity - 1))}
+            >
+              <Minus size={20} />
+            </button>
+            <input
+              className="focus-ring h-12 w-full rounded-md border border-stone-300 text-center text-2xl font-black"
+              inputMode="numeric"
+              value={quantity}
+              onChange={(event) => onQuantityChange(Math.max(0, Number(event.target.value.replace(/\D/g, "")) || 0))}
+            />
+            <button
+              className="focus-ring grid h-12 place-items-center rounded-md border border-stone-300 bg-white"
+              title="야근 인원 1명 증가"
+              onClick={() => onQuantityChange(quantity + 1)}
+            >
+              <Plus size={20} />
+            </button>
+          </div>
+          <button
+            className="focus-ring mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 py-3 font-black text-white"
+            onClick={onSave}
+          >
+            <Save size={18} />
+            {alreadyRegistered ? "야근 인원 수정" : "야근 인원 등록"}
+          </button>
+        </>
+      )}
+    </section>
   );
 }
 

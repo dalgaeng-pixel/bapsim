@@ -118,6 +118,16 @@ export interface DailyMealOrder {
   acknowledged: boolean;
   isAdminCorrection?: boolean;
   settlementIncluded?: boolean;
+  overtimeQuantity?: number;
+  updatedAt: string;
+}
+
+export interface OvertimeMealEntry {
+  id: string;
+  clientId: string;
+  date: string;
+  quantity: number;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -217,6 +227,7 @@ export interface AppState {
   groupStorageReady: boolean;
   settlementPricingStorageReady: boolean;
   deliveryCorrectionStorageReady: boolean;
+  overtimeMealStorageReady: boolean;
   supplierProfileStorageReady: boolean;
   settlementAccountDetailsStorageReady: boolean;
   transactionStatementRemarksStorageReady: boolean;
@@ -224,6 +235,7 @@ export interface AppState {
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
   orders: DailyMealOrder[];
+  overtimeMealEntries: OvertimeMealEntry[];
   orderChangeLogs: OrderChangeLog[];
   changeRequests: ChangeRequest[];
   holidays: Holiday[];

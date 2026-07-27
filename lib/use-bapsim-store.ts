@@ -14,6 +14,7 @@ import {
   DEFAULT_MEAL_UNIT_PRICE,
   getOrderForSlot,
   getOrdersForDate,
+  isOvertimeMealRegistrationDay,
   normalizeAppState,
   type WeeklyQuantities
 } from "@/lib/schedule";
@@ -29,7 +30,8 @@ import type {
   SupplierProfile,
   DailyMealOrder,
   OrderChangeLog,
-  Holiday
+  Holiday,
+  OvertimeMealEntry
 } from "@/lib/types";
 
 const STORAGE_KEY = "bapsim-meal-manager-state-v2";
@@ -80,6 +82,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
     "mealTypes",
     "defaultQuantities",
     "orders",
+    "overtimeMealEntries",
     "orderChangeLogs",
     "changeRequests",
     "holidays",
@@ -115,6 +118,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   diff.groupStorageReady = next.groupStorageReady;
   diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
   diff.deliveryCorrectionStorageReady = next.deliveryCorrectionStorageReady;
+  diff.overtimeMealStorageReady = next.overtimeMealStorageReady;
   diff.transactionStatementRemarksStorageReady = next.transactionStatementRemarksStorageReady;
   diff.supplierProfileStorageReady = next.supplierProfileStorageReady;
   diff.settlementAccountDetailsStorageReady = next.settlementAccountDetailsStorageReady;
@@ -286,6 +290,55 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           ...previous.auditLogs
         ]
       }));
+    },
+    [commit]
+  );
+
+  const saveOvertimeMealEntry = useCallback(
+    (clientId: string, date: string, quantity: number) => {
+      commit((previous) => {
+        const client = previous.clients.find((item) => item.id === clientId);
+        if (
+          !client ||
+          !previous.overtimeMealStorageReady ||
+          date !== todayKey() ||
+          !isOvertimeMealRegistrationDay(previous, clientId, date)
+        ) {
+          return previous;
+        }
+
+        const existing = previous.overtimeMealEntries.find(
+          (entry) => entry.clientId === clientId && entry.date === date
+        );
+        const savedAt = new Date().toISOString();
+        const nextEntry: OvertimeMealEntry = {
+          id: existing?.id ?? id("overtime"),
+          clientId,
+          date,
+          quantity: Math.max(0, Math.floor(quantity)),
+          createdAt: existing?.createdAt ?? savedAt,
+          updatedAt: savedAt
+        };
+        const notification: AppNotification = {
+          id: id("notification"),
+          target: "admin",
+          clientId,
+          title: existing ? "야근 인원 수정" : "야근 인원 등록",
+          body: existing
+            ? client.name + " " + date + " 야근 석식 인원 " + existing.quantity + "명 -> " + nextEntry.quantity + "명"
+            : client.name + " " + date + " 야근 석식 인원 " + nextEntry.quantity + "명 등록",
+          read: false,
+          createdAt: savedAt
+        };
+
+        return {
+          ...previous,
+          overtimeMealEntries: existing
+            ? previous.overtimeMealEntries.map((entry) => (entry.id === existing.id ? nextEntry : entry))
+            : [nextEntry, ...previous.overtimeMealEntries],
+          notifications: [notification, ...previous.notifications]
+        };
+      });
     },
     [commit]
   );
@@ -1730,6 +1783,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           clients: previous.clients.filter((item) => item.id !== clientId),
           contactAccessGroupMembers: previous.contactAccessGroupMembers.filter((item) => item.clientId !== clientId),
           orders: previous.orders.filter((item) => item.clientId !== clientId),
+          overtimeMealEntries: previous.overtimeMealEntries.filter((item) => item.clientId !== clientId),
           defaultQuantities: previous.defaultQuantities.filter((item) => item.clientId !== clientId),
           orderChangeLogs: previous.orderChangeLogs.filter((item) => item.clientId !== clientId),
           changeRequests: previous.changeRequests.filter((item) => item.clientId !== clientId),
@@ -1770,6 +1824,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     getClientOrdersForDate,
     addNotification,
     addAuditLog,
+    saveOvertimeMealEntry,
     changeQuantity,
     changeQuantityForSlot,
     acknowledgeOrder,

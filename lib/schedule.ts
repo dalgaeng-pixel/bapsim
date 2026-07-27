@@ -8,7 +8,8 @@ import type {
   Holiday,
   MealType,
   MealSupplyType,
-  MonthlyAdjustment
+  MonthlyAdjustment,
+  OvertimeMealEntry
 } from "@/lib/types";
 
 export const WEEKDAYS = [
@@ -133,6 +134,7 @@ export function normalizeAppState(state: AppState): AppState {
     groupStorageReady: state.groupStorageReady === true,
     settlementPricingStorageReady: state.settlementPricingStorageReady !== false,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady !== false,
+    overtimeMealStorageReady: state.overtimeMealStorageReady === true,
     supplierProfileStorageReady: state.supplierProfileStorageReady === true,
     settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady === true,
     transactionStatementRemarksStorageReady: state.transactionStatementRemarksStorageReady !== false,
@@ -153,6 +155,10 @@ export function normalizeAppState(state: AppState): AppState {
       ...order,
       isAdminCorrection: order.isAdminCorrection === true,
       settlementIncluded: order.settlementIncluded !== false
+    })),
+    overtimeMealEntries: (state.overtimeMealEntries ?? []).map((entry) => ({
+      ...entry,
+      quantity: Math.max(0, entry.quantity)
     })),
     orderChangeLogs: state.orderChangeLogs ?? [],
     changeRequests: state.changeRequests ?? [],
@@ -320,12 +326,68 @@ export function getOrderForSlot(
   return buildBaseOrder(state, clientId, mealTypeId, date);
 }
 
+export function isDinnerMealType(mealType: Pick<MealType, "name">) {
+  const name = mealType.name.trim().toLowerCase();
+  return name.includes("저녁") || name.includes("석식") || name.includes("dinner");
+}
+
+export function getOvertimeMealEntry(
+  state: Pick<AppState, "overtimeMealEntries">,
+  clientId: string,
+  date: string
+): OvertimeMealEntry | undefined {
+  return state.overtimeMealEntries.find((entry) => entry.clientId === clientId && entry.date === date);
+}
+
+export function getOvertimeMealQuantity(
+  state: Pick<AppState, "overtimeMealEntries">,
+  clientId: string,
+  date: string
+) {
+  return getOvertimeMealEntry(state, clientId, date)?.quantity ?? 0;
+}
+
+export function isOvertimeMealRegistrationDay(state: AppState, clientId: string, date: string) {
+  const client = state.clients.find((item) => item.id === clientId);
+  const weekday = getWeekday(date);
+  if (!isClientStartedOnDate(client, date) || weekday === 0 || weekday === 6) {
+    return false;
+  }
+
+  const dinnerMealTypes = enabledMealTypes(state).filter(isDinnerMealType);
+  return dinnerMealTypes.some((mealType) => !isNoMealByRule(state, clientId, mealType.id, date));
+}
+
+export function getDeliveredOrderForSlot(
+  state: AppState,
+  clientId: string,
+  mealTypeId: string,
+  date: string
+): DailyMealOrder {
+  const order = getOrderForSlot(state, clientId, mealTypeId, date);
+  const mealType = state.mealTypes.find((item) => item.id === mealTypeId);
+  const overtimeQuantity = mealType && isDinnerMealType(mealType)
+    ? getOvertimeMealQuantity(state, clientId, date)
+    : 0;
+
+  if (overtimeQuantity <= 0) {
+    return order;
+  }
+
+  return {
+    ...order,
+    finalQuantity: order.finalQuantity + overtimeQuantity,
+    status: order.status === "normal" ? "normal" : "changed",
+    overtimeQuantity
+  };
+}
+
 export function getOrdersForDate(state: AppState, date: string, mealTypeId?: string) {
   return state.clients
     .flatMap((client) =>
       enabledMealTypes(state)
         .filter((mealType) => !mealTypeId || mealType.id === mealTypeId)
-        .map((mealType) => getOrderForSlot(state, client.id, mealType.id, date))
+        .map((mealType) => getDeliveredOrderForSlot(state, client.id, mealType.id, date))
     )
     .sort((a, b) => {
       const leftClient = state.clients.find((client) => client.id === a.clientId);
@@ -366,7 +428,7 @@ export function getBillableOrdersForClientMonth(state: AppState, clientId: strin
   return getSettlementDatesForMonth(month)
     .flatMap((date) =>
       enabledMealTypes(state).map((mealType) => {
-        const order = getOrderForSlot(state, clientId, mealType.id, date);
+        const order = getDeliveredOrderForSlot(state, clientId, mealType.id, date);
         return { mealType, order };
       })
     )

@@ -12,6 +12,7 @@ import type {
   Holiday,
   MealType,
   MonthlyAdjustment,
+  OvertimeMealEntry,
   OrderChangeLog,
   SettlementAccount,
   SupplierProfile,
@@ -129,6 +130,15 @@ type DailyMealOrderRow = {
   acknowledged: boolean;
   is_admin_correction?: boolean;
   settlement_included?: boolean;
+  updated_at: string;
+};
+
+type OvertimeMealEntryRow = {
+  id: string;
+  client_id: string;
+  order_date: string;
+  quantity: number;
+  created_at: string;
   updated_at: string;
 };
 
@@ -310,7 +320,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     settlementAccountDetailsStorageReady,
     settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
-    transactionStatementRemarkRows
+    transactionStatementRemarkRows,
+    overtimeMealEntryRows
   ] = await Promise.all([
     selectRows<ClientRow>(client, "clients"),
     selectRows<MealTypeRow>(client, "meal_types"),
@@ -336,7 +347,8 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       hasOptionalColumn(client, "daily_meal_orders", "is_admin_correction"),
       hasOptionalColumn(client, "daily_meal_orders", "settlement_included")
     ]).then((columns) => columns.every(Boolean)),
-    selectOptionalRows<TransactionStatementRemarkRow>(client, "transaction_statement_remarks")
+    selectOptionalRows<TransactionStatementRemarkRow>(client, "transaction_statement_remarks"),
+    selectOptionalRows<OvertimeMealEntryRow>(client, "overtime_meal_entries")
   ]);
 
   const deliveryOverrides = Object.fromEntries(
@@ -369,6 +381,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     settlementAdjustmentRows !== undefined;
   const supplierProfile = supplierProfileRows?.[0];
   const transactionStatementRemarksStorageReady = transactionStatementRemarkRows !== undefined;
+  const overtimeMealStorageReady = overtimeMealEntryRows !== undefined;
 
   return normalizeAppState({
     clients: clientRows.map((row): Client => ({
@@ -412,6 +425,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     groupStorageReady,
     settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
+    overtimeMealStorageReady,
     transactionStatementRemarksStorageReady,
     supplierProfileStorageReady: supplierProfileRows !== undefined,
     settlementAccountDetailsStorageReady: groupStorageReady && settlementAccountDetailsStorageReady,
@@ -452,6 +466,14 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       acknowledged: row.acknowledged,
       isAdminCorrection: row.is_admin_correction === true,
       settlementIncluded: row.settlement_included !== false,
+      updatedAt: row.updated_at
+    })),
+    overtimeMealEntries: (overtimeMealEntryRows ?? []).map((row): OvertimeMealEntry => ({
+      id: row.id,
+      clientId: row.client_id,
+      date: row.order_date,
+      quantity: row.quantity,
+      createdAt: row.created_at,
       updatedAt: row.updated_at
     })),
     orderChangeLogs: logRows.map((row): OrderChangeLog => ({
@@ -532,6 +554,7 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     mealTypes: state.mealTypes,
     defaultQuantities: state.defaultQuantities,
     orders: state.orders,
+    overtimeMealEntries: state.overtimeMealEntries,
     orderChangeLogs: state.orderChangeLogs,
     changeRequests: state.changeRequests,
     holidays: state.holidays,
@@ -543,6 +566,7 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     groupStorageReady: state.groupStorageReady,
     settlementPricingStorageReady: state.settlementPricingStorageReady,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady,
+    overtimeMealStorageReady: state.overtimeMealStorageReady,
     transactionStatementRemarksStorageReady: state.transactionStatementRemarksStorageReady,
     supplierProfileStorageReady: state.supplierProfileStorageReady,
     settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady,
@@ -558,6 +582,7 @@ export type AppStateArrayKey =
   | "mealTypes"
   | "defaultQuantities"
   | "orders"
+  | "overtimeMealEntries"
   | "orderChangeLogs"
   | "changeRequests"
   | "holidays"
@@ -574,6 +599,7 @@ export type AppStateDiff = {
   groupStorageReady?: boolean;
   settlementPricingStorageReady?: boolean;
   deliveryCorrectionStorageReady?: boolean;
+  overtimeMealStorageReady?: boolean;
   transactionStatementRemarksStorageReady?: boolean;
   supplierProfileStorageReady?: boolean;
   settlementAccountDetailsStorageReady?: boolean;
@@ -581,6 +607,7 @@ export type AppStateDiff = {
   mealTypes?: MealType[];
   defaultQuantities?: DefaultMealQuantity[];
   orders?: DailyMealOrder[];
+  overtimeMealEntries?: OvertimeMealEntry[];
   orderChangeLogs?: OrderChangeLog[];
   changeRequests?: ChangeRequest[];
   holidays?: Holiday[];
@@ -596,6 +623,7 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
   const groupStorageReady = diff.groupStorageReady === true;
   const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
   const deliveryCorrectionStorageReady = diff.deliveryCorrectionStorageReady === true;
+  const overtimeMealStorageReady = diff.overtimeMealStorageReady === true;
   const transactionStatementRemarksStorageReady = diff.transactionStatementRemarksStorageReady === true;
   const supplierProfileStorageReady = diff.supplierProfileStorageReady === true;
   const settlementAccountDetailsStorageReady = diff.settlementAccountDetailsStorageReady === true;
@@ -608,6 +636,9 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     await deleteRows(client, "holidays", (diff.deleted.clients ?? []).map(clientSettingsHolidayId));
     await deleteRows(client, "default_meal_quantities", diff.deleted.defaultQuantities ?? []);
     await deleteRows(client, "daily_meal_orders", diff.deleted.orders ?? []);
+    if (overtimeMealStorageReady) {
+      await deleteRows(client, "overtime_meal_entries", diff.deleted.overtimeMealEntries ?? []);
+    }
     if (transactionStatementRemarksStorageReady) {
       await deleteRows(client, "transaction_statement_remarks", diff.deleted.transactionStatementRemarks ?? []);
     }
@@ -751,6 +782,21 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
               settlement_included: item.settlementIncluded !== false
             }
           : {}),
+        updated_at: item.updatedAt
+      }))
+    );
+  }
+
+  if (overtimeMealStorageReady && diff.overtimeMealEntries?.length) {
+    await upsertRows(
+      client,
+      "overtime_meal_entries",
+      diff.overtimeMealEntries.map((item) => ({
+        id: item.id,
+        client_id: item.clientId,
+        order_date: item.date,
+        quantity: item.quantity,
+        created_at: item.createdAt,
         updated_at: item.updatedAt
       }))
     );

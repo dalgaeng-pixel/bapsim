@@ -53,6 +53,16 @@ create table if not exists public.daily_meal_orders (
   unique (order_date, client_id, meal_type_id)
 );
 
+create table if not exists public.overtime_meal_entries (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  order_date date not null,
+  quantity integer not null check (quantity >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (client_id, order_date)
+);
+
 create table if not exists public.order_change_logs (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.daily_meal_orders(id) on delete cascade,
@@ -173,6 +183,9 @@ create index if not exists daily_meal_orders_date_meal_idx
 create index if not exists daily_meal_orders_client_date_idx
   on public.daily_meal_orders (client_id, order_date desc);
 
+create index if not exists overtime_meal_entries_date_client_idx
+  on public.overtime_meal_entries (order_date desc, client_id);
+
 create index if not exists daily_meal_orders_admin_correction_date_idx
   on public.daily_meal_orders (order_date desc, client_id, meal_type_id)
   where is_admin_correction;
@@ -190,6 +203,7 @@ alter table public.clients enable row level security;
 alter table public.meal_types enable row level security;
 alter table public.default_meal_quantities enable row level security;
 alter table public.daily_meal_orders enable row level security;
+alter table public.overtime_meal_entries enable row level security;
 alter table public.order_change_logs enable row level security;
 alter table public.change_requests enable row level security;
 alter table public.holidays enable row level security;

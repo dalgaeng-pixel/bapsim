@@ -173,3 +173,11 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - The settlement/contact-manager link copy action now includes the same ready-to-send customer guidance as the client link copy action: service message, access URL, and PIN.
 - Its completion alert also confirms that the link, PIN, and guidance message can be pasted directly into KakaoTalk or another messenger.
+
+## Overtime Meal Registration (2026-07-27)
+
+- Customer contacts now have a dedicated overtime headcount menu for the current day only. They enter the additional dinner headcount with plus/minus controls or a numeric input, and can save again to correct it.
+- A weekday zero entry is stored and notified to the administrator. Weekends and dates configured as dinner holidays are treated as zero automatically and cannot be registered.
+- Overtime rows are stored separately in overtime_meal_entries; they do not alter the original meal-order record. Delivery views, delivery Excel, monthly settlement, and transaction statements add the entry to the relevant dinner quantity at calculation time.
+- Every save creates an administrator notification and uses the existing server-side Web Push path. The Important Changes screen shows the selected date's overtime entries so the administrator can check the saved quantity.
+- Run docs/supabase-overtime-meal-entries-migration.sql once in the production Supabase SQL Editor before deployment. Until the table exists, the customer menu displays a setup notice and does not save data.

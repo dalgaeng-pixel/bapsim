@@ -29,6 +29,7 @@ function isAllowedContactDiff(diff: AppStateDiff, allowedClientIds: Set<string>)
 
   const clientIds = [
     ...(diff.orders ?? []).map((item) => item.clientId),
+    ...(diff.overtimeMealEntries ?? []).map((item) => item.clientId),
     ...(diff.orderChangeLogs ?? []).map((item) => item.clientId),
     ...(diff.changeRequests ?? []).map((item) => item.clientId),
     ...(diff.notifications ?? []).flatMap((item) => item.clientId ? [item.clientId] : [])
