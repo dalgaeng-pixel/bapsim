@@ -1331,6 +1331,7 @@ type ClientFormState = Pick<
   | "deliveryMemo"
   | "deliveryStartDate"
   | "mealSupplyType"
+  | "overtimeMealRegistrationEnabled"
   | "settlementAccountId"
 > & {
   contactAccessGroupId?: string;
@@ -1347,6 +1348,7 @@ const emptyClientForm: ClientFormState = {
   deliveryMemo: "",
   deliveryStartDate: todayKey(),
   mealSupplyType: "regular",
+  overtimeMealRegistrationEnabled: false,
   settlementAccountId: "",
   contactAccessGroupId: "",
   weeklyQuantities: {},
@@ -1403,6 +1405,7 @@ function ClientManager({
       ...emptyClientForm,
       deliveryStartDate: todayKey(),
       mealSupplyType: "regular",
+      overtimeMealRegistrationEnabled: false,
       weeklyQuantities: createBlankWeeklyQuantities(),
       exceptionRules: []
     });
@@ -1421,6 +1424,7 @@ function ClientManager({
       deliveryMemo: client.deliveryMemo,
       deliveryStartDate: client.deliveryStartDate ?? todayKey(),
       mealSupplyType: client.mealSupplyType ?? "regular",
+      overtimeMealRegistrationEnabled: client.overtimeMealRegistrationEnabled === true,
       settlementAccountId: client.settlementAccountId ?? "",
       contactAccessGroupId: store.state.contactAccessGroupMembers.find((member) => member.clientId === client.id)?.contactAccessGroupId ?? "",
       weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
@@ -1508,6 +1512,23 @@ function ClientManager({
                   <option key={value} value={value}>{label}</option>
                 ))}
               </select>
+            </label>
+            <label className="flex min-h-[84px] items-center gap-3 rounded-md border border-stone-300 bg-white px-3 py-3">
+              <input
+                className="h-5 w-5 accent-bapsim-red"
+                type="checkbox"
+                checked={form.overtimeMealRegistrationEnabled === true}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    overtimeMealRegistrationEnabled: event.target.checked
+                  }))
+                }
+              />
+              <span>
+                <span className="block text-sm font-black text-stone-800">야근 인원 등록 사용</span>
+                <span className="mt-1 block text-xs font-semibold text-stone-500">선택한 거래처 링크에만 오늘 야근 인원 메뉴를 표시합니다.</span>
+              </span>
             </label>
             {(store.state.groupStorageReady || store.storageMode === "local") ? (
               <>
@@ -1635,6 +1656,7 @@ function ClientManager({
               <Info label="초대 코드" value={client.inviteCode} />
               <Info label="PIN" value={client.invitePin} />
               <Info label="식수 유형" value={mealSupplyTypeLabel(client.mealSupplyType)} />
+              <Info label="야근 인원" value={client.overtimeMealRegistrationEnabled ? "사용" : "미사용"} />
               <Info
                 label="납품 시작일"
                 value={client.deliveryStartDate ? formatKoreanDate(client.deliveryStartDate) : "즉시"}

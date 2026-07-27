@@ -87,6 +87,7 @@ export interface Client {
   settlementAccountId?: string;
   deliveryStartDate?: string;
   mealSupplyType: MealSupplyType;
+  overtimeMealRegistrationEnabled?: boolean;
   lastSeenAt?: string;
 }
 

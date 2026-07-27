@@ -301,6 +301,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         if (
           !client ||
           !previous.overtimeMealStorageReady ||
+          !client.overtimeMealRegistrationEnabled ||
           date !== todayKey() ||
           !isOvertimeMealRegistrationDay(previous, clientId, date)
         ) {
@@ -1465,6 +1466,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         | "deliveryMemo"
         | "deliveryStartDate"
         | "mealSupplyType"
+        | "overtimeMealRegistrationEnabled"
         | "settlementAccountId"
       > & { contactAccessGroupId?: string; weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
       adminName: string
@@ -1515,6 +1517,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           settlementAccountId: settlementAccount.id,
           deliveryStartDate: input.deliveryStartDate || date,
           mealSupplyType: input.mealSupplyType ?? "regular",
+          overtimeMealRegistrationEnabled: input.overtimeMealRegistrationEnabled === true,
           lastSeenAt: undefined
         };
         const contactAccessGroupMember: ContactAccessGroupMember = {
@@ -1596,6 +1599,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           | "deliveryMemo"
           | "deliveryStartDate"
           | "mealSupplyType"
+          | "overtimeMealRegistrationEnabled"
           | "settlementAccountId"
         >
       > & { contactAccessGroupId?: string; weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },

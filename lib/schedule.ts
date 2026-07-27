@@ -111,7 +111,8 @@ export function normalizeAppState(state: AppState): AppState {
   const grouping = normalizeContactGroupState({
     clients: (state.clients ?? []).map((client) => ({
       ...client,
-      mealSupplyType: client.mealSupplyType ?? "regular"
+      mealSupplyType: client.mealSupplyType ?? "regular",
+      overtimeMealRegistrationEnabled: client.overtimeMealRegistrationEnabled === true
     })),
     settlementAccounts: (state.settlementAccounts ?? []).map((account) => ({
       ...account,
@@ -350,7 +351,12 @@ export function getOvertimeMealQuantity(
 export function isOvertimeMealRegistrationDay(state: AppState, clientId: string, date: string) {
   const client = state.clients.find((item) => item.id === clientId);
   const weekday = getWeekday(date);
-  if (!isClientStartedOnDate(client, date) || weekday === 0 || weekday === 6) {
+  if (
+    !client?.overtimeMealRegistrationEnabled ||
+    !isClientStartedOnDate(client, date) ||
+    weekday === 0 ||
+    weekday === 6
+  ) {
     return false;
   }
 
@@ -696,13 +702,15 @@ export function clientSettingsHolidayId(clientId: string) {
   return `99999999${clientId.slice(8)}`;
 }
 
-export function encodeClientSettingsName(client: Pick<Client, "deliveryStartDate" | "mealSupplyType">) {
-  return `${CLIENT_SETTINGS_PREFIX}${JSON.stringify({
+export function encodeClientSettingsName(
+  client: Pick<Client, "deliveryStartDate" | "mealSupplyType" | "overtimeMealRegistrationEnabled">
+) {
+  return CLIENT_SETTINGS_PREFIX + JSON.stringify({
     deliveryStartDate: client.deliveryStartDate,
-    mealSupplyType: getClientMealSupplyType(client)
-  })}`;
+    mealSupplyType: getClientMealSupplyType(client),
+    overtimeMealRegistrationEnabled: client.overtimeMealRegistrationEnabled === true
+  });
 }
-
 export function isClientSettingsName(name: string) {
   return name.startsWith(CLIENT_SETTINGS_PREFIX);
 }
@@ -716,17 +724,21 @@ export function decodeClientSettingsName(name: string) {
     const parsed = JSON.parse(name.slice(CLIENT_SETTINGS_PREFIX.length)) as {
       deliveryStartDate?: string;
       mealSupplyType?: MealSupplyType;
+      overtimeMealRegistrationEnabled?: boolean;
     };
     return {
       deliveryStartDate: parsed.deliveryStartDate,
-      mealSupplyType: parsed.mealSupplyType === "lunchbox" ? "lunchbox" : "regular"
+      mealSupplyType: parsed.mealSupplyType === "lunchbox" ? "lunchbox" : "regular",
+      overtimeMealRegistrationEnabled: parsed.overtimeMealRegistrationEnabled === true
     };
   } catch {
     return {};
   }
 }
 
-export function buildClientSettingsHolidayRow(client: Pick<Client, "id" | "deliveryStartDate" | "mealSupplyType">) {
+export function buildClientSettingsHolidayRow(
+  client: Pick<Client, "id" | "deliveryStartDate" | "mealSupplyType" | "overtimeMealRegistrationEnabled">
+) {
   return {
     id: clientSettingsHolidayId(client.id),
     holiday_date: CLIENT_SETTINGS_DATE,

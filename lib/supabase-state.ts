@@ -399,6 +399,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       settlementAccountId: row.settlement_account_id ?? undefined,
       deliveryStartDate: clientSettings[row.id]?.deliveryStartDate,
       mealSupplyType: clientSettings[row.id]?.mealSupplyType === "lunchbox" ? "lunchbox" : "regular",
+      overtimeMealRegistrationEnabled: clientSettings[row.id]?.overtimeMealRegistrationEnabled === true,
       lastSeenAt: row.last_seen_at ?? undefined
     })),
     settlementAccounts: (settlementAccountRows ?? []).map((row): SettlementAccount => ({

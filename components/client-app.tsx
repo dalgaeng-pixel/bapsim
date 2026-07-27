@@ -73,6 +73,9 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
     [client?.id, store.state.overtimeMealEntries, today]
   );
   const overtimeRegistrationAvailable = !!client && isOvertimeMealRegistrationDay(store.state, client.id, today);
+  const visibleClientTabs = clientTabs.filter(
+    (item) => item.id !== "overtime" || client?.overtimeMealRegistrationEnabled === true
+  );
 
   const todayOrders = useMemo(
     () => (client ? store.getClientOrdersForDate(client.id, today) : []),
@@ -96,6 +99,12 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
   useEffect(() => {
     setOvertimeDraft(overtimeEntry?.quantity ?? 0);
   }, [overtimeEntry?.id, overtimeEntry?.quantity, client?.id]);
+
+  useEffect(() => {
+    if (tab === "overtime" && client?.overtimeMealRegistrationEnabled !== true) {
+      setTab("today");
+    }
+  }, [client?.overtimeMealRegistrationEnabled, tab]);
 
   useEffect(() => {
     if (contactAccessGroup) {
@@ -670,7 +679,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 border-t border-stone-200 bg-white px-3 py-2">
         <div className="mx-auto grid max-w-3xl grid-cols-3 gap-1 sm:grid-cols-6">
-          {clientTabs.map((item) => {
+          {visibleClientTabs.map((item) => {
             const Icon = item.icon;
             return (
               <button

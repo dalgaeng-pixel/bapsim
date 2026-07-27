@@ -181,3 +181,10 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Overtime rows are stored separately in overtime_meal_entries; they do not alter the original meal-order record. Delivery views, delivery Excel, monthly settlement, and transaction statements add the entry to the relevant dinner quantity at calculation time.
 - Every save creates an administrator notification and uses the existing server-side Web Push path. The Important Changes screen shows the selected date's overtime entries so the administrator can check the saved quantity.
 - Run docs/supabase-overtime-meal-entries-migration.sql once in the production Supabase SQL Editor before deployment. Until the table exists, the customer menu displays a setup notice and does not save data.
+
+## Per-Client Overtime Menu Visibility (2026-07-27)
+
+- The overtime registration menu is now disabled by default for every delivery location, including existing clients.
+- Administrators enable it per location in the client create/edit form with the `야근 인원 등록 사용` checkbox. The client card also displays whether the option is enabled.
+- Only enabled locations receive the menu through a shared contact link. Both the client UI and the save routine enforce the setting, so a hidden or disabled location cannot submit overtime entries.
+- The flag is persisted in the existing internal client-settings holiday row together with delivery start date and meal supply type; no additional Supabase SQL migration is required.
