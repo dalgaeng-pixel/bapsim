@@ -27,6 +27,8 @@ import {
   getWeekday,
   getTomorrowKey,
   getOvertimeMealEntry,
+  getPreviousOvertimeMealEntry,
+  isDinnerMealType,
   isOvertimeMealRegistrationDay,
   mealSupplyTypeLabel,
   WEEKDAYS
@@ -71,8 +73,17 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
   const tomorrow = getTomorrowKey(today);
   const planningDates = useMemo(() => getClientPlanningDates(today), [today]);
   const mealTypes = enabledMealTypes(store.state);
+  const hideDinnerInMealSettings = client?.overtimeMealRegistrationEnabled === true;
+  const visibleMealTypes = hideDinnerInMealSettings
+    ? mealTypes.filter((mealType) => !isDinnerMealType(mealType))
+    : mealTypes;
+  const dinnerMealTypeIds = new Set(mealTypes.filter(isDinnerMealType).map((mealType) => mealType.id));
   const overtimeEntry = useMemo(
     () => (client ? getOvertimeMealEntry(store.state, client.id, today) : undefined),
+    [client?.id, store.state.overtimeMealEntries, today]
+  );
+  const previousOvertimeEntry = useMemo(
+    () => (client ? getPreviousOvertimeMealEntry(store.state, client.id, today) : undefined),
     [client?.id, store.state.overtimeMealEntries, today]
   );
   const overtimeRegistrationAvailable = !!client && isOvertimeMealRegistrationDay(store.state, client.id, today);
@@ -88,6 +99,12 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
     () => (client ? store.getClientOrdersForDate(client.id, tomorrow) : []),
     [client, store, tomorrow]
   );
+  const visibleTodayOrders = hideDinnerInMealSettings
+    ? todayOrders.filter((order) => !dinnerMealTypeIds.has(order.mealTypeId))
+    : todayOrders;
+  const visibleTomorrowOrders = hideDinnerInMealSettings
+    ? tomorrowOrders.filter((order) => !dinnerMealTypeIds.has(order.mealTypeId))
+    : tomorrowOrders;
   const planningOrders = useMemo(
     () => (client ? planningDates.flatMap((date) => store.getClientOrdersForDate(client.id, date)) : []),
     [client, planningDates, store]
@@ -337,8 +354,8 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
               date={today}
               clientId={client.id}
               state={store.state}
-              orders={todayOrders}
-              mealTypes={mealTypes}
+              orders={visibleTodayOrders}
+              mealTypes={visibleMealTypes}
               quantityDrafts={quantityDrafts}
               memoDrafts={memoDrafts}
               onDraftChange={setDraft}
@@ -368,8 +385,8 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
               date={tomorrow}
               clientId={client.id}
               state={store.state}
-              orders={tomorrowOrders}
-              mealTypes={mealTypes}
+              orders={visibleTomorrowOrders}
+              mealTypes={visibleMealTypes}
               quantityDrafts={quantityDrafts}
               memoDrafts={memoDrafts}
               onDraftChange={setDraft}
@@ -412,6 +429,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
             canRegister={overtimeRegistrationAvailable}
             storageReady={store.state.overtimeMealStorageReady}
             alreadyRegistered={!!overtimeEntry}
+            previousRegisteredQuantity={previousOvertimeEntry?.quantity}
             onQuantityChange={setOvertimeDraft}
             onSave={() => {
               if (!client || !store.state.overtimeMealStorageReady || !overtimeRegistrationAvailable) {
@@ -441,11 +459,11 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
               </button>
             </div>
             <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
+              <table className={`w-full border-collapse text-sm ${visibleMealTypes.length > 1 ? "min-w-[640px]" : "min-w-[320px]"}`}>
                 <thead>
                   <tr className="border-b border-stone-200 text-left text-xs font-black text-stone-500">
                     <th className="py-3">날짜</th>
-                    {mealTypes.map((mealType) => (
+                    {visibleMealTypes.map((mealType) => (
                       <th key={mealType.id} className="px-2 py-3 text-center">
                         {mealType.name}
                       </th>
@@ -472,7 +490,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
                             </span>
                           ) : null}
                         </td>
-                        {mealTypes.map((mealType) => {
+                        {visibleMealTypes.map((mealType) => {
                           const order = orders.find((item) => item.mealTypeId === mealType.id);
                           if (!order) {
                             return <td key={mealType.id} />;
@@ -732,6 +750,7 @@ function OvertimeMealSection({
   canRegister,
   storageReady,
   alreadyRegistered,
+  previousRegisteredQuantity,
   onQuantityChange,
   onSave
 }: {
@@ -740,6 +759,7 @@ function OvertimeMealSection({
   canRegister: boolean;
   storageReady: boolean;
   alreadyRegistered: boolean;
+  previousRegisteredQuantity?: number;
   onQuantityChange: (quantity: number) => void;
   onSave: () => void;
 }) {
@@ -760,6 +780,9 @@ function OvertimeMealSection({
           <p className="mt-2 text-sm font-semibold text-stone-600">
             오늘 석식에 추가할 인원만 등록해 주세요. 야근이 없어도 0명으로 등록하면 관리자에게 알림이 갑니다.
           </p>
+          <div className="mt-4 rounded-md border-2 border-red-300 bg-red-50 p-4 text-sm font-black text-red-950">
+            오늘 야근 인원을 등록하지 않으면 최근 등록 인원 {previousRegisteredQuantity ?? 0}명으로 적용됩니다. 야근이 없으면 반드시 0명으로 등록해 주세요.
+          </div>
           <div className="mt-6 grid grid-cols-[48px_1fr_48px] items-center gap-3">
             <button
               className="focus-ring grid h-12 place-items-center rounded-md border border-stone-300 bg-white"
@@ -848,7 +871,7 @@ function DateMealSection({
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className={`grid gap-3 ${orders.length > 1 ? "md:grid-cols-2" : ""}`}>
         {orders.map((order) => {
           const mealType = mealTypes.find((item) => item.id === order.mealTypeId);
           const cutoffPassed = isPastCutoffForDate(order.date, mealType?.cutoffTime);

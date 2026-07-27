@@ -359,12 +359,27 @@ export function getOvertimeMealEntry(
   return state.overtimeMealEntries.find((entry) => entry.clientId === clientId && entry.date === date);
 }
 
+export function getPreviousOvertimeMealEntry(
+  state: Pick<AppState, "overtimeMealEntries">,
+  clientId: string,
+  date: string
+): OvertimeMealEntry | undefined {
+  return state.overtimeMealEntries
+    .filter((entry) => entry.clientId === clientId && entry.date < date)
+    .sort((left, right) => right.date.localeCompare(left.date))[0];
+}
+
 export function getOvertimeMealQuantity(
   state: Pick<AppState, "overtimeMealEntries">,
   clientId: string,
   date: string
 ) {
-  return getOvertimeMealEntry(state, clientId, date)?.quantity ?? 0;
+  const savedEntry = getOvertimeMealEntry(state, clientId, date);
+  if (savedEntry) {
+    return savedEntry.quantity;
+  }
+
+  return getPreviousOvertimeMealEntry(state, clientId, date)?.quantity ?? 0;
 }
 
 export function isOvertimeMealRegistrationDay(state: AppState, clientId: string, date: string) {
@@ -391,7 +406,7 @@ export function getDeliveredOrderForSlot(
 ): DailyMealOrder {
   const order = getOrderForSlot(state, clientId, mealTypeId, date);
   const mealType = state.mealTypes.find((item) => item.id === mealTypeId);
-  const overtimeQuantity = mealType && isDinnerMealType(mealType)
+  const overtimeQuantity = mealType && isDinnerMealType(mealType) && isOvertimeMealRegistrationDay(state, clientId, date)
     ? getOvertimeMealQuantity(state, clientId, date)
     : 0;
 

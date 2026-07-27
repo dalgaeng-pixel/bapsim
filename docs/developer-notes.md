@@ -200,3 +200,8 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - The client `Weekly Schedule` table now applies the same calendar rule used by the today/tomorrow screen. Saturdays, Sundays, Korean public holidays, and administrator-registered closure days use a pale red row, red date and quantity styling, and a visible `주말` or holiday-name label.
 - This is display-only: existing automatic zero-meal behavior and customer quantity editing rules are unchanged.
+## Overtime Dinner Routing (2026-07-27)
+
+- For delivery locations with overtime registration enabled, the client Today/Tomorrow and Weekly Schedule screens omit dinner. Dinner is managed only through the Overtime Headcount menu.
+- When an enabled location has no overtime entry for a working day, delivery, settlement, and statement calculations use the most recent prior overtime registration, including an explicit `0` entry. Weekends and public or registered holidays remain `0` and never inherit a prior value.
+- The Overtime Headcount screen shows a prominent warning with the exact fallback quantity and instructs the user to save `0` when there is no overtime.
