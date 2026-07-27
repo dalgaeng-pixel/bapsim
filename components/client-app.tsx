@@ -466,12 +466,12 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
               </button>
             </div>
             <div className="mt-4 overflow-x-auto">
-              <table className={`w-full border-collapse text-sm ${visibleMealTypes.length > 1 ? "min-w-[640px]" : "min-w-[320px]"}`}>
+              <table className="w-full table-fixed border-collapse text-xs sm:text-sm">
                 <thead>
                   <tr className="border-b border-stone-200 text-left text-xs font-black text-stone-500">
-                    <th className="py-3">날짜</th>
+                    <th className="w-[32%] px-1 py-2 sm:px-2 sm:py-3">날짜</th>
                     {visibleMealTypes.map((mealType) => (
-                      <th key={mealType.id} className="px-2 py-3 text-center">
+                      <th key={mealType.id} className="px-1 py-2 text-center sm:px-2 sm:py-3">
                         {mealType.name}
                       </th>
                     ))}
@@ -488,11 +488,11 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
                     const dateLabel = holidayLabel ?? (isWeekend ? "주말" : undefined);
                     return (
                       <tr key={date} className={`border-b ${isRedDate ? "border-red-100 bg-red-50/70" : "border-stone-100"}`}>
-                        <td className={`py-3 font-black ${isRedDate ? "text-bapsim-red" : "text-stone-900"}`}>
+                        <td className={`px-1 py-2 font-black leading-tight sm:px-2 sm:py-3 ${isRedDate ? "text-bapsim-red" : "text-stone-900"}`}>
                           {date.slice(5)}
                           <span className={`ml-1 text-xs ${isRedDate ? "text-bapsim-red" : "text-stone-500"}`}>{weekdayLabel}</span>
                           {dateLabel ? (
-                            <span className="ml-2 inline-flex rounded-full border border-red-200 bg-white px-2 py-0.5 text-[10px] font-black text-bapsim-red">
+                            <span className="ml-1 inline-flex rounded-full border border-red-200 bg-white px-1.5 py-0.5 text-[9px] font-black text-bapsim-red sm:px-2 sm:text-[10px]">
                               {dateLabel}
                             </span>
                           ) : null}
@@ -503,15 +503,15 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
                             return <td key={mealType.id} />;
                           }
                           return (
-                            <td key={mealType.id} className="px-2 py-2">
+                            <td key={mealType.id} className="px-1 py-1.5 sm:px-2 sm:py-2">
                               <input
-                                className={`focus-ring h-10 w-full rounded-md border text-center font-black ${isRedDate ? "border-red-200 bg-white text-bapsim-red" : "border-stone-300"}`}
+                                className={`focus-ring h-9 w-full rounded-md border text-center text-base font-black sm:h-10 ${isRedDate ? "border-red-200 bg-white text-bapsim-red" : "border-stone-300"}`}
                                 type="number"
                                 min={0}
                                 value={quantityDrafts[slotKey(order)] ?? order.finalQuantity}
                                 onChange={(event) => setDraft(order, Number(event.target.value) || 0)}
                               />
-                              <p className={`mt-1 text-center text-[11px] font-bold ${isRedDate ? "text-red-500" : "text-stone-400"}`}>
+                              <p className={`mt-0.5 text-center text-[10px] font-bold ${isRedDate ? "text-red-500" : "text-stone-400"}`}>
                                 기본 {order.baseQuantity} / {orderStatusLabel(order.status)}
                               </p>
                             </td>

@@ -209,3 +209,7 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - Only the customer client screen header now displays the restaurant phone number `031-798-3342` in large red text to the right of the logo. It uses a `tel:` link for direct phone calls.
 - On narrow mobile screens, the logo title is hidden in that header only so the logo, phone number, and notification button do not overlap. Administrator and login headers are unchanged.
+## Mobile Weekly Schedule Width (2026-07-27)
+
+- The customer Weekly Schedule table no longer has a 640px minimum width. It uses a fixed three-column layout for date, lunch, and dinner so both meal inputs fit within a mobile viewport without horizontal scrolling.
+- Mobile-only cell padding, input height, and supporting text are reduced; desktop spacing and the weekend/holiday red styling remain intact.
