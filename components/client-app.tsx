@@ -358,6 +358,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
             <ClientHeaderCard clientName={client.name} address={client.address} />
             <DateMealSection
               title="오늘"
+              tone="today"
               date={today}
               clientId={client.id}
               state={store.state}
@@ -389,6 +390,7 @@ export function ClientApp({ initialState, contactAccessGroup: initialContactAcce
             />
             <DateMealSection
               title="내일"
+              tone="tomorrow"
               date={tomorrow}
               clientId={client.id}
               state={store.state}
@@ -827,6 +829,7 @@ function OvertimeMealSection({
 
 function DateMealSection({
   title,
+  tone,
   date,
   clientId,
   state,
@@ -840,6 +843,7 @@ function DateMealSection({
   onReject
 }: {
   title: string;
+  tone: "today" | "tomorrow";
   date: string;
   clientId: string;
   state: AppState;
@@ -856,15 +860,16 @@ function DateMealSection({
   const isWeekend = weekday === 0 || weekday === 6;
   const holidayLabel = getHolidayLabelForDate(state, clientId, date);
   const isRedDate = isWeekend || !!holidayLabel;
+  const isTomorrowTone = tone === "tomorrow" && !isRedDate;
   const weekdayLabel = WEEKDAYS.find((item) => item.index === weekday)?.label ?? "";
 
   return (
     <section className="space-y-3">
-      <div className={`rounded-lg border p-4 ${isRedDate ? "border-red-200 bg-red-50" : "border-stone-200 bg-stone-50"}`}>
+      <div className={`rounded-lg border p-4 ${isRedDate ? "border-red-200 bg-red-50" : isTomorrowTone ? "border-sky-200 bg-sky-50" : "border-stone-200 bg-stone-50"}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className={`text-sm font-black ${isRedDate ? "text-bapsim-red" : "text-stone-500"}`}>{title}</p>
-            <h2 className={`mt-1 text-2xl font-black ${isRedDate ? "text-red-950" : "text-stone-900"}`}>
+            <p className={`text-sm font-black ${isRedDate ? "text-bapsim-red" : isTomorrowTone ? "text-sky-700" : "text-stone-500"}`}>{title}</p>
+            <h2 className={`mt-1 text-2xl font-black ${isRedDate ? "text-red-950" : isTomorrowTone ? "text-sky-950" : "text-stone-900"}`}>
               {formatKoreanDate(date)} ({weekdayLabel})
             </h2>
           </div>
@@ -888,11 +893,11 @@ function DateMealSection({
           const holidayLocked = Boolean(noMealLabel) && order.status === "holiday";
 
           return (
-            <div key={key} className="rounded-lg border border-stone-200 bg-white p-5 shadow-soft">
+            <div key={key} className={`rounded-lg border p-5 shadow-soft ${isTomorrowTone ? "border-sky-200 bg-sky-50/50" : "border-stone-200 bg-white"}`}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-bold text-stone-500">{mealType?.name ?? "식사"}</p>
-                  <p className="mt-2 text-4xl font-black text-bapsim-red">{order.finalQuantity}개</p>
+                  <p className={`text-sm font-bold ${isTomorrowTone ? "text-sky-700" : "text-stone-500"}`}>{mealType?.name ?? "식사"}</p>
+                  <p className={`mt-2 text-4xl font-black ${isTomorrowTone ? "text-sky-700" : "text-bapsim-red"}`}>{order.finalQuantity}개</p>
                   <p className="mt-2 text-sm font-semibold text-stone-600">
                     {holidayLocked ? `${noMealLabel} · 식수 0개` : `기본 ${order.baseQuantity}개 · 마감 ${mealType?.cutoffTime ?? "10:00"}`}
                   </p>
@@ -918,7 +923,7 @@ function DateMealSection({
                       <Minus size={18} />
                     </button>
                     <input
-                      className="focus-ring h-11 w-full min-w-0 rounded-md border border-stone-300 text-center text-xl font-black"
+                      className={`focus-ring h-11 w-full min-w-0 rounded-md border text-center text-xl font-black ${isTomorrowTone ? "border-sky-200 bg-white text-sky-800" : "border-stone-300"}`}
                       inputMode="numeric"
                       value={draft}
                       onChange={(event) => onDraftChange(order, Number(event.target.value.replace(/\D/g, "")) || 0)}

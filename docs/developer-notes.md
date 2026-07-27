@@ -213,3 +213,7 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - The customer Weekly Schedule table no longer has a 640px minimum width. It uses a fixed three-column layout for date, lunch, and dinner so both meal inputs fit within a mobile viewport without horizontal scrolling.
 - Mobile-only cell padding, input height, and supporting text are reduced; desktop spacing and the weekend/holiday red styling remain intact.
+## Today And Tomorrow Color Separation (2026-07-27)
+
+- In the customer Today/Tomorrow view, tomorrow now uses a blue date header, meal card, quantity, and quantity input styling. Today retains the existing red quantity emphasis.
+- Weekend, public holiday, and administrator-registered closure styling still takes priority, so a tomorrow holiday remains red.
