@@ -157,7 +157,7 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
   const [monthlyView, setMonthlyView] = useState<"settlement" | "statement">("settlement");
   const [selectedMealTypeId, setSelectedMealTypeId] = useState<string | null>(null);
 
-  const { state } = store;
+  const { state, refreshAdminState } = store;
   const mealTypes = enabledMealTypes(state);
   const selectedMealType =
     mealTypes.find((mealType) => mealType.id === selectedMealTypeId) ?? mealTypes[0];
@@ -346,6 +346,31 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
       document.removeEventListener("visibilitychange", refreshPushStatus);
     };
   }, []);
+
+  useEffect(() => {
+    let refreshing = false;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible" || refreshing) {
+        return;
+      }
+
+      refreshing = true;
+      void refreshAdminState().finally(() => {
+        refreshing = false;
+      });
+    };
+
+    const intervalId = window.setInterval(refreshWhenVisible, 60_000);
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshAdminState]);
 
   const handlePushToggle = async () => {
     if (pushBusy) {

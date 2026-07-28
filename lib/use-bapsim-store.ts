@@ -176,6 +176,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
   const [storageMode, setStorageMode] = useState<StorageMode>(initialState ? "supabase" : "local");
   const remoteEnabledRef = useRef(!!initialState);
   const contactSyncRef = useRef(contactSyncCredentials);
+  const lastLocalCommitAtRef = useRef(0);
 
   useEffect(() => {
     if (initialState) {
@@ -201,6 +202,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
   }, [initialState]);
 
   const commit = useCallback((updater: (previous: AppState) => AppState) => {
+    lastLocalCommitAtRef.current = Date.now();
     setState((previous) => {
       const next = updater(previous);
       writeState(next);
@@ -218,6 +220,33 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
       }
       return next;
     });
+  }, []);
+
+  const refreshAdminState = useCallback(async () => {
+    if (!remoteEnabledRef.current || contactSyncRef.current || Date.now() - lastLocalCommitAtRef.current < 7000) {
+      return false;
+    }
+
+    try {
+      const response = await fetch("/api/admin/state", { cache: "no-store" });
+      if (!response.ok) {
+        return false;
+      }
+
+      const payload = (await response.json()) as RemoteStateResponse;
+      if (payload.mode !== "supabase" || !payload.state) {
+        return false;
+      }
+
+      const nextState = normalizeAppState(payload.state);
+      writeState(nextState);
+      setState(nextState);
+      setStorageMode("supabase");
+      setLoaded(true);
+      return true;
+    } catch {
+      return false;
+    }
   }, []);
 
   const activeMealType = state.mealTypes.find((mealType) => mealType.enabled) ?? state.mealTypes[0];
@@ -1973,6 +2002,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     addHoliday,
     saveHolidayClosures,
     deleteHolidayClosure,
-    deleteClientRecord
+    deleteClientRecord,
+    refreshAdminState
   };
 }

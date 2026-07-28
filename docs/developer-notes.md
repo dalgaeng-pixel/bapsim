@@ -217,3 +217,8 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - In the customer Today/Tomorrow view, tomorrow now uses a blue date header, meal card, quantity, and quantity input styling. Today retains the existing red quantity emphasis.
 - Weekend, public holiday, and administrator-registered closure styling still takes priority, so a tomorrow holiday remains red.
+## Multi-PC Admin State Refresh (2026-07-28)
+
+- The administrator dashboard now reloads Supabase state when the browser regains focus and every 60 seconds while visible. This keeps separate administrator PCs aligned after another PC saves a change.
+- Refresh is skipped for seven seconds after a local change so an in-flight save is not replaced by an older server response.
+- State refresh uses the authenticated `/api/admin/state` endpoint; customer contact links cannot access administrator-wide state through this mechanism.
