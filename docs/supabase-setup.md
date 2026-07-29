@@ -40,6 +40,14 @@ To enable monthly settlement prices, then run the full contents of:
 
 once in Supabase SQL Editor. It adds the per-settlement-account, per-month unit price column and lets a monthly price change remain separate from the calculated meal quantity.
 
+To preserve past transaction statements when recurring weekly quantities change, also run:
+
+```sql
+-- docs/supabase-default-meal-quantity-history-migration.sql
+```
+
+once in Supabase SQL Editor. It creates dated default-meal history. When editing a client afterward, select the date the new weekly quantities start; earlier dates keep their previous schedule.
+
 ## 4. Auth plan
 
 Admin login should use phone OTP. Supabase JS supports client initialization with `createClient` and OTP login through `signInWithOtp`.

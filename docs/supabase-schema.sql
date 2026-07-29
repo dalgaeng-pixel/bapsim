@@ -36,6 +36,18 @@ create table if not exists public.default_meal_quantities (
   unique (client_id, meal_type_id, weekday)
 );
 
+create table if not exists public.default_meal_quantity_versions (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.clients(id) on delete cascade,
+  meal_type_id uuid not null references public.meal_types(id) on delete cascade,
+  weekday smallint not null check (weekday between 0 and 6),
+  quantity integer not null check (quantity >= 0),
+  effective_from date not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (client_id, meal_type_id, weekday, effective_from)
+);
+
 create table if not exists public.daily_meal_orders (
   id uuid primary key default gen_random_uuid(),
   order_date date not null,
@@ -177,6 +189,9 @@ create index if not exists clients_status_delivery_order_idx
 create index if not exists clients_name_idx
   on public.clients (name);
 
+create index if not exists default_meal_quantity_versions_lookup_idx
+  on public.default_meal_quantity_versions (client_id, meal_type_id, weekday, effective_from desc);
+
 create index if not exists daily_meal_orders_date_meal_idx
   on public.daily_meal_orders (order_date, meal_type_id);
 
@@ -202,6 +217,7 @@ create index if not exists notifications_target_read_idx
 alter table public.clients enable row level security;
 alter table public.meal_types enable row level security;
 alter table public.default_meal_quantities enable row level security;
+alter table public.default_meal_quantity_versions enable row level security;
 alter table public.daily_meal_orders enable row level security;
 alter table public.overtime_meal_entries enable row level security;
 alter table public.order_change_logs enable row level security;
@@ -342,3 +358,4 @@ grant all on public.settlement_accounts to service_role;
 grant all on public.contact_access_groups to service_role;
 grant all on public.contact_access_group_members to service_role;
 grant all on public.monthly_settlement_adjustments to service_role;
+grant all on public.default_meal_quantity_versions to service_role;

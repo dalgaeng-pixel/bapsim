@@ -108,6 +108,15 @@ export interface DefaultMealQuantity {
   quantity: number;
 }
 
+export interface DefaultMealQuantityVersion {
+  id: string;
+  clientId: string;
+  mealTypeId: string;
+  weekday: number;
+  quantity: number;
+  effectiveFrom: string;
+}
+
 export interface DailyMealOrder {
   id: string;
   date: string;
@@ -231,6 +240,7 @@ export interface AppState {
   groupStorageReady: boolean;
   settlementPricingStorageReady: boolean;
   deliveryCorrectionStorageReady: boolean;
+  defaultQuantityVersionStorageReady: boolean;
   overtimeMealStorageReady: boolean;
   supplierProfileStorageReady: boolean;
   settlementAccountDetailsStorageReady: boolean;
@@ -238,6 +248,7 @@ export interface AppState {
   supplierProfile: SupplierProfile;
   mealTypes: MealType[];
   defaultQuantities: DefaultMealQuantity[];
+  defaultQuantityVersions: DefaultMealQuantityVersion[];
   orders: DailyMealOrder[];
   overtimeMealEntries: OvertimeMealEntry[];
   orderChangeLogs: OrderChangeLog[];

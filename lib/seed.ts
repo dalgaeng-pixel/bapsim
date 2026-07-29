@@ -142,6 +142,15 @@ export function createInitialState(): AppState {
     quantity: quantities[index]
   }));
 
+  const defaultQuantityVersions = defaultQuantities.map((item) => ({
+    id: `version-${item.id}`,
+    clientId: item.clientId,
+    mealTypeId: item.mealTypeId,
+    weekday: item.weekday,
+    quantity: item.quantity,
+    effectiveFrom: "1900-01-01"
+  }));
+
   const orders: DailyMealOrder[] = clients.map((client, index) => ({
     id: ids.orders[index],
     date,
@@ -199,6 +208,7 @@ export function createInitialState(): AppState {
     groupStorageReady: true,
     settlementPricingStorageReady: true,
     deliveryCorrectionStorageReady: true,
+    defaultQuantityVersionStorageReady: true,
     overtimeMealStorageReady: true,
     supplierProfileStorageReady: true,
     settlementAccountDetailsStorageReady: true,
@@ -216,6 +226,7 @@ export function createInitialState(): AppState {
     },
     mealTypes,
     defaultQuantities,
+    defaultQuantityVersions,
     orders,
     overtimeMealEntries: [],
     orderChangeLogs: [

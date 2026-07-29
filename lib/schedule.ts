@@ -6,6 +6,7 @@ import type {
   Client,
   DailyMealOrder,
   DefaultMealQuantity,
+  DefaultMealQuantityVersion,
   Holiday,
   MealType,
   MealSupplyType,
@@ -136,6 +137,7 @@ export function normalizeAppState(state: AppState): AppState {
     groupStorageReady: state.groupStorageReady === true,
     settlementPricingStorageReady: state.settlementPricingStorageReady !== false,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady !== false,
+    defaultQuantityVersionStorageReady: state.defaultQuantityVersionStorageReady === true,
     overtimeMealStorageReady: state.overtimeMealStorageReady === true,
     supplierProfileStorageReady: state.supplierProfileStorageReady === true,
     settlementAccountDetailsStorageReady: state.settlementAccountDetailsStorageReady === true,
@@ -153,6 +155,10 @@ export function normalizeAppState(state: AppState): AppState {
     },
     mealTypes,
     defaultQuantities,
+    defaultQuantityVersions: normalizeDefaultQuantityVersions({
+      defaultQuantities,
+      defaultQuantityVersions: state.defaultQuantityVersions ?? []
+    }),
     orders: (state.orders ?? []).map((order) => ({
       ...order,
       isAdminCorrection: order.isAdminCorrection === true,
@@ -240,6 +246,42 @@ function normalizeDefaultQuantities({
   return next;
 }
 
+function normalizeDefaultQuantityVersions({
+  defaultQuantities,
+  defaultQuantityVersions
+}: {
+  defaultQuantities: DefaultMealQuantity[];
+  defaultQuantityVersions: DefaultMealQuantityVersion[];
+}) {
+  const next = defaultQuantityVersions.map((item) => ({
+    ...item,
+    effectiveFrom: item.effectiveFrom || "1900-01-01",
+    quantity: Math.max(0, Number(item.quantity) || 0)
+  }));
+
+  for (const quantity of defaultQuantities) {
+    if (
+      !next.some(
+        (item) =>
+          item.clientId === quantity.clientId &&
+          item.mealTypeId === quantity.mealTypeId &&
+          item.weekday === quantity.weekday
+      )
+    ) {
+      next.push({
+        id: `legacy-version-${quantity.id}`,
+        clientId: quantity.clientId,
+        mealTypeId: quantity.mealTypeId,
+        weekday: quantity.weekday,
+        quantity: quantity.quantity,
+        effectiveFrom: "1900-01-01"
+      });
+    }
+  }
+
+  return next;
+}
+
 export function createLocalId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -248,12 +290,27 @@ export function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function getBaseQuantity(state: AppState, clientId: string, mealTypeId: string, date: string) {
-  if (isNoMealByRule(state, clientId, mealTypeId, date)) {
-    return 0;
+function getScheduledDefaultQuantity(
+  state: AppState,
+  clientId: string,
+  mealTypeId: string,
+  weekday: number,
+  date: string
+) {
+  const version = state.defaultQuantityVersions
+    .filter(
+      (item) =>
+        item.clientId === clientId &&
+        item.mealTypeId === mealTypeId &&
+        item.weekday === weekday &&
+        item.effectiveFrom <= date
+    )
+    .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+
+  if (version) {
+    return version.quantity;
   }
 
-  const weekday = getWeekday(date);
   return (
     state.defaultQuantities.find(
       (item) =>
@@ -262,6 +319,13 @@ export function getBaseQuantity(state: AppState, clientId: string, mealTypeId: s
   );
 }
 
+export function getBaseQuantity(state: AppState, clientId: string, mealTypeId: string, date: string) {
+  if (isNoMealByRule(state, clientId, mealTypeId, date)) {
+    return 0;
+  }
+
+  return getScheduledDefaultQuantity(state, clientId, mealTypeId, getWeekday(date), date);
+}
 export function getHolidayLabelForDate(state: AppState, clientId: string, date: string) {
   const rule = state.holidays.find((holiday) => holidayMatchesDate(holiday, clientId, date));
   return rule?.name ?? getKoreanPublicHolidayName(date);
@@ -665,20 +729,24 @@ export function buildBaseOrder(
   };
 }
 
-export function getWeeklyQuantitiesForClient(state: AppState, clientId: string): WeeklyQuantities {
+export function getWeeklyQuantitiesForClient(
+  state: AppState,
+  clientId: string,
+  effectiveFrom = todayKey()
+): WeeklyQuantities {
   const result: WeeklyQuantities = {};
 
   for (const mealType of enabledMealTypes(state)) {
     result[mealType.id] = {};
 
     for (const weekday of [0, 1, 2, 3, 4, 5, 6]) {
-      result[mealType.id][weekday] =
-        state.defaultQuantities.find(
-          (item) =>
-            item.clientId === clientId &&
-            item.mealTypeId === mealType.id &&
-            item.weekday === weekday
-        )?.quantity ?? 0;
+      result[mealType.id][weekday] = getScheduledDefaultQuantity(
+        state,
+        clientId,
+        mealType.id,
+        weekday,
+        effectiveFrom
+      );
     }
   }
 
@@ -710,6 +778,43 @@ export function buildDefaultQuantitiesFromWeekly({
         clientId,
         mealTypeId: mealType.id,
         weekday,
+        quantity: Math.max(0, Number(weeklyQuantities[mealType.id]?.[weekday] ?? 0))
+      });
+    }
+  }
+
+  return rows;
+}
+
+export function buildDefaultQuantityVersionsFromWeekly({
+  state,
+  clientId,
+  weeklyQuantities,
+  effectiveFrom
+}: {
+  state: AppState;
+  clientId: string;
+  weeklyQuantities: WeeklyQuantities;
+  effectiveFrom: string;
+}) {
+  const rows: DefaultMealQuantityVersion[] = [];
+
+  for (const mealType of enabledMealTypes(state)) {
+    for (const weekday of [0, 1, 2, 3, 4, 5, 6]) {
+      const existing = state.defaultQuantityVersions.find(
+        (item) =>
+          item.clientId === clientId &&
+          item.mealTypeId === mealType.id &&
+          item.weekday === weekday &&
+          item.effectiveFrom === effectiveFrom
+      );
+
+      rows.push({
+        id: existing?.id ?? createLocalId("default-version"),
+        clientId,
+        mealTypeId: mealType.id,
+        weekday,
+        effectiveFrom,
         quantity: Math.max(0, Number(weeklyQuantities[mealType.id]?.[weekday] ?? 0))
       });
     }

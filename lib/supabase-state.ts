@@ -9,6 +9,7 @@ import type {
   ContactAccessGroupMember,
   DailyMealOrder,
   DefaultMealQuantity,
+  DefaultMealQuantityVersion,
   Holiday,
   MealType,
   MonthlyAdjustment,
@@ -117,6 +118,14 @@ type DefaultMealQuantityRow = {
   quantity: number;
 };
 
+type DefaultMealQuantityVersionRow = {
+  id: string;
+  client_id: string;
+  meal_type_id: string;
+  weekday: number;
+  quantity: number;
+  effective_from: string;
+};
 type DailyMealOrderRow = {
   id: string;
   order_date: string;
@@ -305,6 +314,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     clientRows,
     mealTypeRows,
     defaultRows,
+    defaultQuantityVersionRows,
     orderRows,
     logRows,
     requestRows,
@@ -326,6 +336,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     selectRows<ClientRow>(client, "clients"),
     selectRows<MealTypeRow>(client, "meal_types"),
     selectRows<DefaultMealQuantityRow>(client, "default_meal_quantities"),
+    selectOptionalRows<DefaultMealQuantityVersionRow>(client, "default_meal_quantity_versions"),
     selectRows<DailyMealOrderRow>(client, "daily_meal_orders"),
     selectRows<OrderChangeLogRow>(client, "order_change_logs"),
     selectRows<ChangeRequestRow>(client, "change_requests"),
@@ -426,6 +437,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     groupStorageReady,
     settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
+    defaultQuantityVersionStorageReady: defaultQuantityVersionRows !== undefined,
     overtimeMealStorageReady,
     transactionStatementRemarksStorageReady,
     supplierProfileStorageReady: supplierProfileRows !== undefined,
@@ -453,6 +465,14 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       mealTypeId: row.meal_type_id,
       weekday: row.weekday,
       quantity: row.quantity
+    })),
+    defaultQuantityVersions: (defaultQuantityVersionRows ?? []).map((row): DefaultMealQuantityVersion => ({
+      id: row.id,
+      clientId: row.client_id,
+      mealTypeId: row.meal_type_id,
+      weekday: row.weekday,
+      quantity: row.quantity,
+      effectiveFrom: row.effective_from
     })),
     orders: orderRows.map((row): DailyMealOrder => ({
       id: row.id,
@@ -554,6 +574,7 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     contactAccessGroupMembers: state.contactAccessGroupMembers,
     mealTypes: state.mealTypes,
     defaultQuantities: state.defaultQuantities,
+    defaultQuantityVersions: state.defaultQuantityVersions,
     orders: state.orders,
     overtimeMealEntries: state.overtimeMealEntries,
     orderChangeLogs: state.orderChangeLogs,
@@ -567,6 +588,7 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     groupStorageReady: state.groupStorageReady,
     settlementPricingStorageReady: state.settlementPricingStorageReady,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady,
+    defaultQuantityVersionStorageReady: state.defaultQuantityVersionStorageReady,
     overtimeMealStorageReady: state.overtimeMealStorageReady,
     transactionStatementRemarksStorageReady: state.transactionStatementRemarksStorageReady,
     supplierProfileStorageReady: state.supplierProfileStorageReady,
@@ -582,6 +604,7 @@ export type AppStateArrayKey =
   | "contactAccessGroupMembers"
   | "mealTypes"
   | "defaultQuantities"
+  | "defaultQuantityVersions"
   | "orders"
   | "overtimeMealEntries"
   | "orderChangeLogs"
@@ -600,6 +623,7 @@ export type AppStateDiff = {
   groupStorageReady?: boolean;
   settlementPricingStorageReady?: boolean;
   deliveryCorrectionStorageReady?: boolean;
+  defaultQuantityVersionStorageReady?: boolean;
   overtimeMealStorageReady?: boolean;
   transactionStatementRemarksStorageReady?: boolean;
   supplierProfileStorageReady?: boolean;
@@ -607,6 +631,7 @@ export type AppStateDiff = {
   supplierProfile?: SupplierProfile;
   mealTypes?: MealType[];
   defaultQuantities?: DefaultMealQuantity[];
+  defaultQuantityVersions?: DefaultMealQuantityVersion[];
   orders?: DailyMealOrder[];
   overtimeMealEntries?: OvertimeMealEntry[];
   orderChangeLogs?: OrderChangeLog[];
@@ -624,6 +649,7 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
   const groupStorageReady = diff.groupStorageReady === true;
   const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
   const deliveryCorrectionStorageReady = diff.deliveryCorrectionStorageReady === true;
+  const defaultQuantityVersionStorageReady = diff.defaultQuantityVersionStorageReady === true;
   const overtimeMealStorageReady = diff.overtimeMealStorageReady === true;
   const transactionStatementRemarksStorageReady = diff.transactionStatementRemarksStorageReady === true;
   const supplierProfileStorageReady = diff.supplierProfileStorageReady === true;
@@ -636,6 +662,9 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
     await deleteRows(client, "holidays", diff.deleted.monthlyAdjustments ?? []);
     await deleteRows(client, "holidays", (diff.deleted.clients ?? []).map(clientSettingsHolidayId));
     await deleteRows(client, "default_meal_quantities", diff.deleted.defaultQuantities ?? []);
+    if (defaultQuantityVersionStorageReady) {
+      await deleteRows(client, "default_meal_quantity_versions", diff.deleted.defaultQuantityVersions ?? []);
+    }
     await deleteRows(client, "daily_meal_orders", diff.deleted.orders ?? []);
     if (overtimeMealStorageReady) {
       await deleteRows(client, "overtime_meal_entries", diff.deleted.overtimeMealEntries ?? []);
@@ -758,6 +787,21 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
         meal_type_id: item.mealTypeId,
         weekday: item.weekday,
         quantity: item.quantity
+      }))
+    );
+  }
+
+  if (defaultQuantityVersionStorageReady && diff.defaultQuantityVersions?.length) {
+    await upsertRows(
+      client,
+      "default_meal_quantity_versions",
+      diff.defaultQuantityVersions.map((item) => ({
+        id: item.id,
+        client_id: item.clientId,
+        meal_type_id: item.mealTypeId,
+        weekday: item.weekday,
+        quantity: item.quantity,
+        effective_from: item.effectiveFrom
       }))
     );
   }

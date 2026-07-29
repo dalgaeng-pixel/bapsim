@@ -7,6 +7,7 @@ import {
   addDays,
   buildBaseOrder,
   buildDefaultQuantitiesFromWeekly,
+  buildDefaultQuantityVersionsFromWeekly,
   createHolidayRule,
   createLocalId,
   enabledMealTypes,
@@ -93,6 +94,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
     "contactAccessGroupMembers",
     "mealTypes",
     "defaultQuantities",
+    "defaultQuantityVersions",
     "orders",
     "overtimeMealEntries",
     "orderChangeLogs",
@@ -130,6 +132,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   diff.groupStorageReady = next.groupStorageReady;
   diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
   diff.deliveryCorrectionStorageReady = next.deliveryCorrectionStorageReady;
+  diff.defaultQuantityVersionStorageReady = next.defaultQuantityVersionStorageReady;
   diff.overtimeMealStorageReady = next.overtimeMealStorageReady;
   diff.transactionStatementRemarksStorageReady = next.transactionStatementRemarksStorageReady;
   diff.supplierProfileStorageReady = next.supplierProfileStorageReady;
@@ -151,7 +154,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   }
 
   if (
-    (diff.defaultQuantities?.length || diff.orders?.length || diff.deleted?.defaultQuantities?.length) &&
+    (diff.defaultQuantities?.length || diff.defaultQuantityVersions?.length || diff.orders?.length || diff.deleted?.defaultQuantities?.length || diff.deleted?.defaultQuantityVersions?.length) &&
     !diff.mealTypes
   ) {
     diff.mealTypes = next.mealTypes;
@@ -732,6 +735,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         let nextOrders = previous.orders;
         let nextClients = previous.clients;
         let nextDefaultQuantities = previous.defaultQuantities;
+        let nextDefaultQuantityVersions = previous.defaultQuantityVersions;
         const client = previous.clients.find((item) => item.id === request.clientId);
 
         if (status === "approved" && request.orderId && request.requestedQuantity !== undefined) {
@@ -782,8 +786,23 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
               ? { ...item, quantity: request.requestedQuantity! }
               : item
           );
+          const effectiveFrom = todayKey();
+          nextDefaultQuantityVersions = [
+            ...previous.defaultQuantityVersions.filter(
+              (item) => !(item.clientId === request.clientId && item.effectiveFrom === effectiveFrom)
+            ),
+            ...nextDefaultQuantities
+              .filter((item) => item.clientId === request.clientId)
+              .map((item) => ({
+                id: id("default-version"),
+                clientId: item.clientId,
+                mealTypeId: item.mealTypeId,
+                weekday: item.weekday,
+                quantity: item.quantity,
+                effectiveFrom
+              }))
+          ];
         }
-
         const updatedRequest: ChangeRequest = {
           ...request,
           status,
@@ -817,6 +836,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           ...previous,
           clients: nextClients,
           defaultQuantities: nextDefaultQuantities,
+          defaultQuantityVersions: nextDefaultQuantityVersions,
           orders: nextOrders,
           changeRequests: previous.changeRequests.map((item) =>
             item.id === request.id ? updatedRequest : item
@@ -1612,7 +1632,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         | "mealSupplyType"
         | "overtimeMealRegistrationEnabled"
         | "settlementAccountId"
-      > & { contactAccessGroupId?: string; weeklyQuantities: WeeklyQuantities; exceptionRules: Holiday[] },
+      > & { contactAccessGroupId?: string; weeklyQuantities: WeeklyQuantities; weeklyEffectiveFrom?: string; exceptionRules: Holiday[] },
       adminName: string
     ) => {
       commit((previous) => {
@@ -1686,6 +1706,12 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           clientId,
           weeklyQuantities: input.weeklyQuantities
         });
+        const defaultQuantityVersions = buildDefaultQuantityVersionsFromWeekly({
+          state: temporaryState,
+          clientId,
+          weeklyQuantities: input.weeklyQuantities,
+          effectiveFrom: input.weeklyEffectiveFrom || client.deliveryStartDate || date
+        });
         const holidays = input.exceptionRules.map((rule) => ({
           ...rule,
           id: id("holiday"),
@@ -1694,6 +1720,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         const stateWithDefaults = normalizeAppState({
           ...temporaryState,
           defaultQuantities: [...previous.defaultQuantities, ...defaultQuantities],
+          defaultQuantityVersions: [...previous.defaultQuantityVersions, ...defaultQuantityVersions],
           holidays: [...previous.holidays, ...holidays]
         });
         const orders = enabledMealTypes(stateWithDefaults).map((mealType) =>
@@ -1711,6 +1738,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
             : [...previous.contactAccessGroups, contactAccessGroup],
           contactAccessGroupMembers: [...previous.contactAccessGroupMembers, contactAccessGroupMember],
           defaultQuantities: [...previous.defaultQuantities, ...defaultQuantities],
+          defaultQuantityVersions: [...previous.defaultQuantityVersions, ...defaultQuantityVersions],
           holidays: [...previous.holidays, ...holidays],
           orders: [...previous.orders, ...orders],
           auditLogs: [
@@ -1746,7 +1774,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           | "overtimeMealRegistrationEnabled"
           | "settlementAccountId"
         >
-      > & { contactAccessGroupId?: string; weeklyQuantities?: WeeklyQuantities; exceptionRules?: Holiday[] },
+      > & { contactAccessGroupId?: string; weeklyQuantities?: WeeklyQuantities; weeklyEffectiveFrom?: string; exceptionRules?: Holiday[] },
       adminName: string
     ) => {
       commit((previous) => {
@@ -1755,8 +1783,9 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           return previous;
         }
 
-        const { weeklyQuantities, exceptionRules, contactAccessGroupId, ...clientUpdates } = updates;
+        const { weeklyQuantities, weeklyEffectiveFrom, exceptionRules, contactAccessGroupId, ...clientUpdates } = updates;
         let nextDefaultQuantities = previous.defaultQuantities;
+        let nextDefaultQuantityVersions = previous.defaultQuantityVersions;
         let nextHolidays = previous.holidays;
         let nextOrders = previous.orders;
         let nextContactAccessGroupMembers = previous.contactAccessGroupMembers;
@@ -1783,6 +1812,20 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
             ...previous.defaultQuantities.filter((item) => item.clientId !== clientId),
             ...replacementDefaults
           ];
+          const effectiveFrom = weeklyEffectiveFrom || todayKey();
+          const replacementDefaultQuantityVersions = buildDefaultQuantityVersionsFromWeekly({
+            state: previous,
+            clientId,
+            weeklyQuantities,
+            effectiveFrom
+          });
+
+          nextDefaultQuantityVersions = [
+            ...previous.defaultQuantityVersions.filter(
+              (item) => !(item.clientId === clientId && item.effectiveFrom === effectiveFrom)
+            ),
+            ...replacementDefaultQuantityVersions
+          ];
         }
 
         if (exceptionRules) {
@@ -1800,6 +1843,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           const nextForBase = normalizeAppState({
             ...previous,
             defaultQuantities: nextDefaultQuantities,
+            defaultQuantityVersions: nextDefaultQuantityVersions,
             holidays: nextHolidays
           });
 
@@ -1826,6 +1870,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         return {
           ...previous,
           defaultQuantities: nextDefaultQuantities,
+          defaultQuantityVersions: nextDefaultQuantityVersions,
           holidays: nextHolidays,
           orders: nextOrders,
           contactAccessGroupMembers: nextContactAccessGroupMembers,
@@ -1838,7 +1883,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
               action: weeklyQuantities || exceptionRules ? "update_meal_settings" : "update_client",
               adminName,
               targetLabel: clientUpdates.name ?? client.name,
-              detail: weeklyQuantities || exceptionRules ? "기본 식수 설정 수정" : "거래처 정보 수정",
+              detail: weeklyQuantities ? `기본 식수 설정 수정 · ${weeklyEffectiveFrom || todayKey()}부터 적용` : exceptionRules ? "기본 식수 예외 설정 수정" : "거래처 정보 수정",
               createdAt: new Date().toISOString()
             },
             ...previous.auditLogs
@@ -1933,6 +1978,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           orders: previous.orders.filter((item) => item.clientId !== clientId),
           overtimeMealEntries: previous.overtimeMealEntries.filter((item) => item.clientId !== clientId),
           defaultQuantities: previous.defaultQuantities.filter((item) => item.clientId !== clientId),
+          defaultQuantityVersions: previous.defaultQuantityVersions.filter((item) => item.clientId !== clientId),
           orderChangeLogs: previous.orderChangeLogs.filter((item) => item.clientId !== clientId),
           changeRequests: previous.changeRequests.filter((item) => item.clientId !== clientId),
           holidays: previous.holidays.filter((item) => item.clientId !== clientId),

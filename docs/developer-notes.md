@@ -222,3 +222,9 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - The administrator dashboard now reloads Supabase state when the browser regains focus and every 60 seconds while visible. This keeps separate administrator PCs aligned after another PC saves a change.
 - Refresh is skipped for seven seconds after a local change so an in-flight save is not replaced by an older server response.
 - State refresh uses the authenticated `/api/admin/state` endpoint; customer contact links cannot access administrator-wide state through this mechanism.
+
+## Default Meal Quantity History (2026-07-29)
+- Weekly default meals now use an administrator-selected effective start date. A later quantity change only affects that date and later; earlier daily delivery rows, monthly settlement, and transaction statements continue to use the prior schedule.
+- The history is stored in `default_meal_quantity_versions`. Run `docs/supabase-default-meal-quantity-history-migration.sql` once before saving further client meal settings in Supabase mode.
+- The client form defaults the effective start date to today. Select the Monday of the relevant week when an entire week changes.
+- The 3rd output room correction was fixed as explicit daily records: July 20, 21, 23, 24, and 27 use lunch 13 / dinner 7; July 28 and 29 use lunch 12 / dinner 8.

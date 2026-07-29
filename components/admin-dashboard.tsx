@@ -1362,6 +1362,7 @@ type ClientFormState = Pick<
 > & {
   contactAccessGroupId?: string;
   weeklyQuantities: WeeklyQuantities;
+  weeklyEffectiveFrom: string;
   exceptionRules: Holiday[];
 };
 
@@ -1378,6 +1379,7 @@ const emptyClientForm: ClientFormState = {
   settlementAccountId: "",
   contactAccessGroupId: "",
   weeklyQuantities: {},
+  weeklyEffectiveFrom: todayKey(),
   exceptionRules: []
 };
 
@@ -1644,6 +1646,7 @@ function ClientManager({
       mealSupplyType: "regular",
       overtimeMealRegistrationEnabled: false,
       weeklyQuantities: createBlankWeeklyQuantities(),
+      weeklyEffectiveFrom: todayKey(),
       exceptionRules: []
     });
     setError("");
@@ -1664,7 +1667,8 @@ function ClientManager({
       overtimeMealRegistrationEnabled: client.overtimeMealRegistrationEnabled === true,
       settlementAccountId: client.settlementAccountId ?? "",
       contactAccessGroupId: store.state.contactAccessGroupMembers.find((member) => member.clientId === client.id)?.contactAccessGroupId ?? "",
-      weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id),
+      weeklyQuantities: getWeeklyQuantitiesForClient(store.state, client.id, todayKey()),
+      weeklyEffectiveFrom: todayKey(),
       exceptionRules: store.state.holidays.filter(
         (holiday) => holiday.clientId === client.id && holiday.ruleType && !holiday.category
       )
@@ -1676,6 +1680,10 @@ function ClientManager({
   const save = () => {
     if (!form.name.trim() || !form.address.trim() || !form.managerName.trim()) {
       setError("업체명, 주소, 담당자명은 필수입니다.");
+      return;
+    }
+    if (store.storageMode !== "local" && !store.state.defaultQuantityVersionStorageReady) {
+      setError("기본 식수 이력 저장을 위해 Supabase 마이그레이션을 먼저 실행해야 합니다.");
       return;
     }
 
@@ -1821,6 +1829,10 @@ function ClientManager({
           <WeeklyQuantityEditor
             mealTypes={mealTypes}
             weeklyQuantities={form.weeklyQuantities}
+            effectiveFrom={form.weeklyEffectiveFrom}
+            onEffectiveFromChange={(weeklyEffectiveFrom) =>
+              setForm((current) => ({ ...current, weeklyEffectiveFrom }))
+            }
             onChange={(weeklyQuantities) =>
               setForm((current) => ({ ...current, weeklyQuantities }))
             }
@@ -1996,10 +2008,14 @@ function ClientManager({
 function WeeklyQuantityEditor({
   mealTypes,
   weeklyQuantities,
+  effectiveFrom,
+  onEffectiveFromChange,
   onChange
 }: {
   mealTypes: ReturnType<typeof enabledMealTypes>;
   weeklyQuantities: WeeklyQuantities;
+  effectiveFrom: string;
+  onEffectiveFromChange: (effectiveFrom: string) => void;
   onChange: (weeklyQuantities: WeeklyQuantities) => void;
 }) {
   const setQuantity = (mealTypeId: string, weekday: number, quantity: number) => {
@@ -2014,13 +2030,22 @@ function WeeklyQuantityEditor({
 
   return (
     <div className="mt-4 rounded-lg border border-red-100 bg-white p-4">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h3 className="font-black">기본 식수표</h3>
+          <h3 className="font-black">기본 식수</h3>
           <p className="mt-1 text-sm font-semibold text-stone-500">
-            거래처 기본값입니다. 0개는 해당 요일/식사를 안먹음으로 처리합니다.
+            선택한 적용 시작일 전의 납품·거래명세표 수량은 유지됩니다. 이번 주 전체 변경은 월요일을 선택하세요.
           </p>
         </div>
+        <label className="block shrink-0">
+          <span className="text-xs font-black text-stone-600">기본 식수 적용 시작일</span>
+          <input
+            className="focus-ring mt-1 h-10 rounded-md border border-stone-300 bg-white px-3 font-black"
+            type="date"
+            value={effectiveFrom}
+            onChange={(event) => onEffectiveFromChange(event.target.value)}
+          />
+        </label>
       </div>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm">
