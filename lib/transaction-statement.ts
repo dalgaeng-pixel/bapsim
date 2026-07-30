@@ -9,6 +9,7 @@ export type TransactionStatementDay = {
   dinnerAmount: number;
   totalAmount: number;
   memo?: string;
+  priceNote?: string;
 };
 
 export type TransactionStatementLocation = {
@@ -36,6 +37,15 @@ export type TransactionStatement = {
   totalAmount: number;
 };
 
+type DayAccumulator = {
+  lunchQuantity: number;
+  dinnerQuantity: number;
+  lunchAmount: number;
+  dinnerAmount: number;
+  lunchDirectUnitPrice?: number;
+  dinnerDirectUnitPrice?: number;
+};
+
 function mealPeriod(name: string) {
   const normalized = name.trim().toLowerCase();
   if (normalized.includes("점심") || normalized.includes("중식") || normalized.includes("lunch")) {
@@ -47,6 +57,18 @@ function mealPeriod(name: string) {
   return null;
 }
 
+function formatUnitPrice(value: number) {
+  return new Intl.NumberFormat("ko-KR").format(value) + "원";
+}
+
+function buildPriceNote(day: DayAccumulator) {
+  const notes = [
+    day.lunchDirectUnitPrice === undefined ? "" : `중식 별도 단가 ${formatUnitPrice(day.lunchDirectUnitPrice)}`,
+    day.dinnerDirectUnitPrice === undefined ? "" : `석식 별도 단가 ${formatUnitPrice(day.dinnerDirectUnitPrice)}`
+  ].filter(Boolean);
+  return notes.join(" · ") || undefined;
+}
+
 function buildLocationStatement(
   state: AppState,
   accountId: string,
@@ -54,7 +76,7 @@ function buildLocationStatement(
   client: Client,
   unitPrice: number
 ): TransactionStatementLocation {
-  const byDate = new Map<string, { lunchQuantity: number; dinnerQuantity: number }>();
+  const byDate = new Map<string, DayAccumulator>();
 
   for (const order of getBillableOrdersForClientMonth(state, client.id, month)) {
     if (order.finalQuantity <= 0) {
@@ -65,8 +87,27 @@ function buildLocationStatement(
     if (!period) {
       continue;
     }
-    const day = byDate.get(order.date) ?? { lunchQuantity: 0, dinnerQuantity: 0 };
-    day[period === "lunch" ? "lunchQuantity" : "dinnerQuantity"] += order.finalQuantity;
+
+    const day = byDate.get(order.date) ?? {
+      lunchQuantity: 0,
+      dinnerQuantity: 0,
+      lunchAmount: 0,
+      dinnerAmount: 0
+    };
+    const orderUnitPrice = order.unitPrice ?? unitPrice;
+    if (period === "lunch") {
+      day.lunchQuantity += order.finalQuantity;
+      day.lunchAmount += order.finalQuantity * orderUnitPrice;
+      if (order.unitPrice !== undefined) {
+        day.lunchDirectUnitPrice = order.unitPrice;
+      }
+    } else {
+      day.dinnerQuantity += order.finalQuantity;
+      day.dinnerAmount += order.finalQuantity * orderUnitPrice;
+      if (order.unitPrice !== undefined) {
+        day.dinnerDirectUnitPrice = order.unitPrice;
+      }
+    }
     byDate.set(order.date, day);
   }
 
@@ -81,26 +122,30 @@ function buildLocationStatement(
       )?.memo;
       return {
         date,
-        ...quantities,
-        lunchAmount: quantities.lunchQuantity * unitPrice,
-        dinnerAmount: quantities.dinnerQuantity * unitPrice,
-        totalAmount: (quantities.lunchQuantity + quantities.dinnerQuantity) * unitPrice,
-        memo: memo || undefined
+        lunchQuantity: quantities.lunchQuantity,
+        dinnerQuantity: quantities.dinnerQuantity,
+        lunchAmount: quantities.lunchAmount,
+        dinnerAmount: quantities.dinnerAmount,
+        totalAmount: quantities.lunchAmount + quantities.dinnerAmount,
+        memo: memo || undefined,
+        priceNote: buildPriceNote(quantities)
       };
     });
 
   const lunchQuantity = days.reduce((sum, day) => sum + day.lunchQuantity, 0);
   const dinnerQuantity = days.reduce((sum, day) => sum + day.dinnerQuantity, 0);
+  const lunchAmount = days.reduce((sum, day) => sum + day.lunchAmount, 0);
+  const dinnerAmount = days.reduce((sum, day) => sum + day.dinnerAmount, 0);
 
   return {
     client,
     days,
     lunchQuantity,
     dinnerQuantity,
-    lunchAmount: lunchQuantity * unitPrice,
-    dinnerAmount: dinnerQuantity * unitPrice,
+    lunchAmount,
+    dinnerAmount,
     totalQuantity: lunchQuantity + dinnerQuantity,
-    totalAmount: (lunchQuantity + dinnerQuantity) * unitPrice
+    totalAmount: lunchAmount + dinnerAmount
   };
 }
 
@@ -120,12 +165,19 @@ export function getTransactionStatement(
     .sort((left, right) => left.deliveryOrder - right.deliveryOrder || left.name.localeCompare(right.name))
     .map((client) => buildLocationStatement(state, settlementAccountId, month, client, unitPrice));
 
-  const byDate = new Map<string, { lunchQuantity: number; dinnerQuantity: number }>();
+  const byDate = new Map<string, DayAccumulator>();
   for (const location of locations) {
     for (const day of location.days) {
-      const total = byDate.get(day.date) ?? { lunchQuantity: 0, dinnerQuantity: 0 };
+      const total = byDate.get(day.date) ?? {
+        lunchQuantity: 0,
+        dinnerQuantity: 0,
+        lunchAmount: 0,
+        dinnerAmount: 0
+      };
       total.lunchQuantity += day.lunchQuantity;
       total.dinnerQuantity += day.dinnerQuantity;
+      total.lunchAmount += day.lunchAmount;
+      total.dinnerAmount += day.dinnerAmount;
       byDate.set(day.date, total);
     }
   }
@@ -134,13 +186,16 @@ export function getTransactionStatement(
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, quantities]) => ({
       date,
-      ...quantities,
-      lunchAmount: quantities.lunchQuantity * unitPrice,
-      dinnerAmount: quantities.dinnerQuantity * unitPrice,
-      totalAmount: (quantities.lunchQuantity + quantities.dinnerQuantity) * unitPrice
+      lunchQuantity: quantities.lunchQuantity,
+      dinnerQuantity: quantities.dinnerQuantity,
+      lunchAmount: quantities.lunchAmount,
+      dinnerAmount: quantities.dinnerAmount,
+      totalAmount: quantities.lunchAmount + quantities.dinnerAmount
     }));
   const lunchQuantity = locations.reduce((sum, location) => sum + location.lunchQuantity, 0);
   const dinnerQuantity = locations.reduce((sum, location) => sum + location.dinnerQuantity, 0);
+  const lunchAmount = locations.reduce((sum, location) => sum + location.lunchAmount, 0);
+  const dinnerAmount = locations.reduce((sum, location) => sum + location.dinnerAmount, 0);
 
   return {
     account,
@@ -150,9 +205,9 @@ export function getTransactionStatement(
     days,
     lunchQuantity,
     dinnerQuantity,
-    lunchAmount: lunchQuantity * unitPrice,
-    dinnerAmount: dinnerQuantity * unitPrice,
+    lunchAmount,
+    dinnerAmount,
     totalQuantity: lunchQuantity + dinnerQuantity,
-    totalAmount: (lunchQuantity + dinnerQuantity) * unitPrice
+    totalAmount: lunchAmount + dinnerAmount
   };
 }

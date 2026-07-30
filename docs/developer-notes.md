@@ -228,3 +228,17 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - The history is stored in `default_meal_quantity_versions`. Run `docs/supabase-default-meal-quantity-history-migration.sql` once before saving further client meal settings in Supabase mode.
 - The client form defaults the effective start date to today. Select the Monday of the relevant week when an entire week changes.
 - The 3rd output room correction was fixed as explicit daily records: July 20, 21, 23, 24, and 27 use lunch 13 / dinner 7; July 28 and 29 use lunch 12 / dinner 8.
+
+## Admin Overtime Phone Orders (2026-07-30)
+
+- The administrator Important Changes screen now includes a same-day overtime headcount editor for active delivery locations that have overtime registration enabled.
+- It writes the same `overtime_meal_entries` row used by customer registration, so delivery, monthly settlement, and transaction statements immediately use the phone-order quantity.
+- Administrator saves do not create a notification to the administrator. They instead persist an `update_overtime_meal_entry` audit log with the before/after quantity for traceability.
+- Customer registrations keep their existing administrator notification and Web Push behavior. Weekends and public or registered holidays remain automatic zero and cannot be manually registered through this panel.
+
+## Daily Correction Special Prices (2026-07-30)
+
+- Daily delivery corrections now accept an optional direct unit price for special meals. Leave it blank to use the settlement account's normal monthly price.
+- A direct price applies to the selected lunch or dinner correction only. It is included in monthly settlement totals, transaction-statement totals, printing, and Excel export; printed statements append the special-price note to the relevant row.
+- Run `docs/supabase-daily-delivery-correction-pricing-migration.sql` before using this field with Supabase.
+- A manual monthly final-quantity override remains an account-wide override and therefore uses the selected monthly unit price rather than attempting to allocate the override to a special-meal row.

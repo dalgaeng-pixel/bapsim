@@ -132,6 +132,7 @@ function calculateDiff(prev: AppState, next: AppState): AppStateDiff {
   diff.groupStorageReady = next.groupStorageReady;
   diff.settlementPricingStorageReady = next.settlementPricingStorageReady;
   diff.deliveryCorrectionStorageReady = next.deliveryCorrectionStorageReady;
+  diff.deliveryCorrectionPricingStorageReady = next.deliveryCorrectionPricingStorageReady;
   diff.defaultQuantityVersionStorageReady = next.defaultQuantityVersionStorageReady;
   diff.overtimeMealStorageReady = next.overtimeMealStorageReady;
   diff.transactionStatementRemarksStorageReady = next.transactionStatementRemarksStorageReady;
@@ -388,6 +389,59 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     [commit]
   );
 
+  const saveAdminOvertimeMealEntry = useCallback(
+    (clientId: string, date: string, quantity: number, adminName: string) => {
+      commit((previous) => {
+        const client = previous.clients.find((item) => item.id === clientId);
+        if (
+          !client ||
+          !previous.overtimeMealStorageReady ||
+          !client.overtimeMealRegistrationEnabled ||
+          date !== todayKey() ||
+          !isOvertimeMealRegistrationDay(previous, clientId, date)
+        ) {
+          return previous;
+        }
+
+        const existing = previous.overtimeMealEntries.find(
+          (entry) => entry.clientId === clientId && entry.date === date
+        );
+        const nextQuantity = Math.max(0, Math.floor(quantity));
+        if (existing?.quantity === nextQuantity) {
+          return previous;
+        }
+
+        const savedAt = new Date().toISOString();
+        const nextEntry: OvertimeMealEntry = {
+          id: existing?.id ?? id("overtime"),
+          clientId,
+          date,
+          quantity: nextQuantity,
+          createdAt: existing?.createdAt ?? savedAt,
+          updatedAt: savedAt
+        };
+
+        return {
+          ...previous,
+          overtimeMealEntries: existing
+            ? previous.overtimeMealEntries.map((entry) => (entry.id === existing.id ? nextEntry : entry))
+            : [nextEntry, ...previous.overtimeMealEntries],
+          auditLogs: [
+            {
+              id: id("audit"),
+              action: "update_overtime_meal_entry",
+              adminName,
+              targetLabel: client.name,
+              detail: `${date} 전화 주문 야근 석식 ${existing ? `${existing.quantity}명 -> ` : ""}${nextQuantity}명`,
+              createdAt: savedAt
+            },
+            ...previous.auditLogs
+          ]
+        };
+      });
+    },
+    [commit]
+  );
   const changeQuantity = useCallback(
     (orderId: string, afterQuantity: number, memo: string, actorName: string) => {
       commit((previous) => {
@@ -597,6 +651,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         mealTypeId: string;
         finalQuantity: number;
         settlementIncluded: boolean;
+        unitPrice?: number;
         memo: string;
       },
       adminName: string
@@ -613,6 +668,9 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         );
         const baseOrder = existing ?? buildBaseOrder(previous, input.clientId, input.mealTypeId, input.date);
         const finalQuantity = Math.max(0, Math.floor(Number(input.finalQuantity) || 0));
+        const unitPrice = input.unitPrice === undefined
+          ? undefined
+          : Math.max(0, Math.floor(Number(input.unitPrice) || 0));
         const memo = input.memo.trim() || "관리자 보정";
         const updatedAt = new Date().toISOString();
         const nextOrder: DailyMealOrder = {
@@ -624,6 +682,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
           acknowledged: true,
           isAdminCorrection: true,
           settlementIncluded: input.settlementIncluded,
+          unitPrice,
           updatedAt
         };
         const changeLog: OrderChangeLog = {
@@ -2019,6 +2078,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
     addNotification,
     addAuditLog,
     saveOvertimeMealEntry,
+    saveAdminOvertimeMealEntry,
     changeQuantity,
     changeQuantityForSlot,
     acknowledgeOrder,

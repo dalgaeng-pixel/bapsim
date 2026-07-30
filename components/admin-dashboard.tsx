@@ -58,6 +58,7 @@ import {
   getOrderForSlot,
   DEFAULT_MEAL_UNIT_PRICE,
   isClientStartedOnDate,
+  isOvertimeMealRegistrationDay,
   mealSupplyTypeLabel,
   MEAL_SUPPLY_TYPE_LABELS,
   makeRuleStorageDate,
@@ -311,6 +312,9 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
         (store.getClient(left.clientId)?.deliveryOrder ?? Number.MAX_SAFE_INTEGER) -
         (store.getClient(right.clientId)?.deliveryOrder ?? Number.MAX_SAFE_INTEGER)
     );
+  const overtimeEligibleClients = [...state.clients]
+    .filter((client) => client.status === "active" && client.overtimeMealRegistrationEnabled === true)
+    .sort((left, right) => left.deliveryOrder - right.deliveryOrder);
   const reviewOrders = state.orders.filter(
     (order) =>
       order.date === selectedDate &&
@@ -568,7 +572,7 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
                   <div>
                     <h2 className="text-xl font-black text-sky-950">야근 인원 등록</h2>
                     <p className="mt-1 text-sm font-semibold text-sky-800">
-                      {formatKoreanDate(selectedDate)} 석식에 추가되는 인원입니다. 등록 또는 수정 시 관리자 알림과 푸시가 전송됩니다.
+                      {formatKoreanDate(selectedDate)} 석식 야근 인원입니다. 거래처 등록 내역을 확인하고 전화 주문은 아래에서 직접 입력합니다.
                     </p>
                   </div>
                   <span className="rounded-full bg-white px-3 py-1 text-sm font-black text-sky-900">
@@ -597,6 +601,13 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
                     })
                   )}
                 </div>
+                <AdminOvertimeMealEditor
+                  date={selectedDate}
+                  state={state}
+                  clients={overtimeEligibleClients}
+                  adminName={adminName}
+                  onSave={store.saveAdminOvertimeMealEntry}
+                />
               </div>
               <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft">
                 <h2 className="text-xl font-black">승인 대기 요청</h2>
@@ -936,6 +947,123 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
   );
 }
 
+function AdminOvertimeMealEditor({
+  date,
+  state,
+  clients,
+  adminName,
+  onSave
+}: {
+  date: string;
+  state: AppState;
+  clients: Client[];
+  adminName: string;
+  onSave: (clientId: string, date: string, quantity: number, adminName: string) => void;
+}) {
+  const [clientId, setClientId] = useState("");
+  const [quantity, setQuantity] = useState(0);
+  const [feedback, setFeedback] = useState("");
+  const selectedClient = clients.find((client) => client.id === clientId);
+  const existingEntry = state.overtimeMealEntries.find(
+    (entry) => entry.clientId === clientId && entry.date === date
+  );
+  const isToday = date === todayKey();
+  const canSave = Boolean(
+    state.overtimeMealStorageReady &&
+    selectedClient &&
+    isToday &&
+    isOvertimeMealRegistrationDay(state, selectedClient.id, date)
+  );
+
+  useEffect(() => {
+    if (!clients.some((client) => client.id === clientId)) {
+      setClientId(clients[0]?.id ?? "");
+    }
+  }, [clientId, clients]);
+
+  useEffect(() => {
+    setQuantity(existingEntry?.quantity ?? 0);
+    setFeedback("");
+  }, [clientId, date, existingEntry?.id, existingEntry?.quantity]);
+
+  return (
+    <section className="mt-5 border-t border-sky-200 pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-black text-sky-950">전화 주문 직접 입력</h3>
+        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-sky-900">당일만</span>
+      </div>
+      {!state.overtimeMealStorageReady ? (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+          야근 인원 저장 테이블을 준비 중입니다.
+        </p>
+      ) : clients.length === 0 ? (
+        <p className="mt-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-bold text-stone-600">
+          야근 인원 등록을 사용하는 거래처가 없습니다.
+        </p>
+      ) : !isToday ? (
+        <p className="mt-3 rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm font-bold text-stone-600">
+          야근 인원은 오늘 날짜에서만 직접 등록할 수 있습니다.
+        </p>
+      ) : (
+        <form
+          className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto] md:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!selectedClient || !canSave) {
+              return;
+            }
+            if (existingEntry?.quantity === quantity) {
+              setFeedback("변경된 인원이 없습니다.");
+              return;
+            }
+            onSave(selectedClient.id, date, quantity, adminName);
+            setFeedback(existingEntry ? "야근 인원을 수정했습니다." : "야근 인원을 등록했습니다.");
+          }}
+        >
+          <label className="grid gap-1 text-sm font-bold text-stone-700">
+            거래처
+            <select
+              className="focus-ring h-10 rounded-md border border-stone-300 bg-white px-3 font-bold"
+              value={clientId}
+              onChange={(event) => setClientId(event.target.value)}
+            >
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-bold text-stone-700">
+            야근 인원
+            <input
+              className="focus-ring h-10 rounded-md border border-stone-300 px-3 text-right text-lg font-black disabled:bg-stone-100"
+              type="number"
+              min={0}
+              step={1}
+              value={quantity}
+              disabled={!canSave}
+              onChange={(event) => setQuantity(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+            />
+          </label>
+          <button className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 font-black text-white disabled:bg-stone-300" type="submit" disabled={!canSave}>
+            <Save size={16} />
+            {existingEntry ? "수정" : "등록"}
+          </button>
+        </form>
+      )}
+      {isToday && selectedClient && !canSave && state.overtimeMealStorageReady ? (
+        <p className="mt-2 text-xs font-bold text-bapsim-red">
+          선택한 거래처는 오늘 야근 인원을 등록할 수 없습니다. 주말과 공휴일은 0명으로 처리됩니다.
+        </p>
+      ) : null}
+      {canSave ? (
+        <p className="mt-2 text-xs font-bold text-sky-900">
+          {existingEntry ? `현재 ${existingEntry.quantity}명 등록됨` : "등록 없음"}
+          {feedback ? ` · ${feedback}` : ""}
+        </p>
+      ) : null}
+    </section>
+  );
+}
 function OrderTable({
   orders,
   adminName,
@@ -1129,7 +1257,9 @@ function DeliveryCorrectionPanel({
   const [quantity, setQuantity] = useState("");
   const [settlementIncluded, setSettlementIncluded] = useState(true);
   const [memo, setMemo] = useState("");
+  const [unitPrice, setUnitPrice] = useState("");
   const storageReady = store.storageMode === "local" || state.deliveryCorrectionStorageReady;
+  const priceStorageReady = store.storageMode === "local" || state.deliveryCorrectionPricingStorageReady;
   const selectedCorrection = state.orders.find(
     (order) =>
       order.isAdminCorrection &&
@@ -1138,6 +1268,7 @@ function DeliveryCorrectionPanel({
       order.mealTypeId === mealTypeId
   );
   const parsedQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+  const parsedUnitPrice = unitPrice.trim() === "" ? undefined : Math.max(0, Math.floor(Number(unitPrice) || 0));
   const selectedDateIsValid = Boolean(date) && date <= todayKey();
 
   useEffect(() => {
@@ -1165,6 +1296,7 @@ function DeliveryCorrectionPanel({
     setQuantity(String(order.finalQuantity));
     setSettlementIncluded(order.settlementIncluded !== false);
     setMemo(order.isAdminCorrection ? order.memo ?? "" : "");
+    setUnitPrice(order.isAdminCorrection && order.unitPrice !== undefined ? String(order.unitPrice) : "");
   }, [clientId, date, mealTypeId, state]);
 
   const resetForm = () => {
@@ -1172,6 +1304,7 @@ function DeliveryCorrectionPanel({
     setQuantity("");
     setSettlementIncluded(true);
     setMemo("");
+    setUnitPrice("");
   };
 
   return (
@@ -1189,6 +1322,11 @@ function DeliveryCorrectionPanel({
       {!storageReady ? (
         <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">
           Supabase SQL Editor에서 <code>docs/supabase-daily-delivery-corrections-migration.sql</code>을 실행한 뒤 새로고침하면 보정을 저장할 수 있습니다.
+        </div>
+      ) : null}
+      {storageReady && !priceStorageReady ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-950">
+          특식 별도 단가를 저장하려면 <code>docs/supabase-daily-delivery-correction-pricing-migration.sql</code>을 실행해 주세요.
         </div>
       ) : null}
 
@@ -1213,6 +1351,18 @@ function DeliveryCorrectionPanel({
           실제 수량
           <input className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3 text-right font-black" type="number" min={0} value={quantity} onChange={(event) => setQuantity(event.target.value)} />
         </label>
+                <label className="grid gap-1 text-sm font-bold text-stone-700">
+          특식 직접 단가
+          <input
+            className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3 text-right font-black disabled:bg-stone-100"
+            type="number"
+            min={0}
+            placeholder="기본 단가"
+            value={unitPrice}
+            disabled={!priceStorageReady}
+            onChange={(event) => setUnitPrice(event.target.value)}
+          />
+        </label>
         <label className="grid gap-1 text-sm font-bold text-stone-700 sm:col-span-2">
           보정 사유
           <input className="focus-ring h-10 w-full rounded-md border border-stone-300 px-3" value={memo} placeholder="샘플, 추가 납품 등" onChange={(event) => setMemo(event.target.value)} />
@@ -1222,7 +1372,7 @@ function DeliveryCorrectionPanel({
             <input className="h-4 w-4 accent-bapsim-red" type="checkbox" checked={settlementIncluded} onChange={(event) => setSettlementIncluded(event.target.checked)} />
             정산 포함
           </label>
-          <button className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-bapsim-red text-white disabled:bg-stone-300" title={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} aria-label={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} disabled={!storageReady || !selectedDateIsValid || !clientId || !mealTypeId || quantity.trim() === ""} onClick={() => { store.updateAdminDeliveryCorrection({ clientId, date, mealTypeId, finalQuantity: parsedQuantity, settlementIncluded, memo }, adminName); }}><Save size={17} /></button>
+          <button className="focus-ring inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-bapsim-red text-white disabled:bg-stone-300" title={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} aria-label={selectedCorrection ? "실제 납품 보정 수정" : "실제 납품 보정 저장"} disabled={!storageReady || !selectedDateIsValid || !clientId || !mealTypeId || quantity.trim() === ""} onClick={() => { store.updateAdminDeliveryCorrection({ clientId, date, mealTypeId, finalQuantity: parsedQuantity, settlementIncluded, unitPrice: parsedUnitPrice, memo }, adminName); }}><Save size={17} /></button>
         </div>
       </div>
       <div className="mt-4 overflow-x-auto">
@@ -1248,7 +1398,7 @@ function DeliveryCorrectionPanel({
                   <td className="hidden max-w-56 truncate md:table-cell">{order.memo ?? "관리자 보정"}</td>
                   <td>
                     <div className="flex gap-1">
-                      <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="보정 내용 수정" onClick={() => { setDate(order.date); setClientId(order.clientId); setMealTypeId(order.mealTypeId); setQuantity(String(order.finalQuantity)); setSettlementIncluded(order.settlementIncluded !== false); setMemo(order.memo ?? ""); }}><Pencil size={15} /></button>
+                      <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700" title="보정 내용 수정" onClick={() => { setDate(order.date); setClientId(order.clientId); setMealTypeId(order.mealTypeId); setQuantity(String(order.finalQuantity)); setSettlementIncluded(order.settlementIncluded !== false); setMemo(order.memo ?? ""); setUnitPrice(order.unitPrice === undefined ? "" : String(order.unitPrice)); }}><Pencil size={15} /></button>
                       <button className="focus-ring rounded-md border border-stone-300 p-2 text-stone-700 disabled:text-stone-300" title="기본 수량으로 되돌리기" disabled={!storageReady} onClick={() => { if (window.confirm(`${order.date} 실제 납품 보정을 기본 수량으로 되돌릴까요?`)) { store.resetAdminDeliveryCorrection(order.clientId, order.date, order.mealTypeId, adminName); resetForm(); } }}><RotateCcw size={15} /></button>
                     </div>
                   </td>
@@ -1294,7 +1444,9 @@ function SettlementMonthlyRow({
     (pricingReady && parsedUnitPrice !== settlement.unitPrice) ||
     normalizedMemo !== (settlement.adjustment?.memo ?? "");
   const correction = settlement.settlementFinalQuantity - settlement.computedFinalQuantity;
-  const amount = parsedQuantity * parsedUnitPrice;
+  const amount = parsedQuantity !== settlement.computedFinalQuantity
+    ? parsedQuantity * parsedUnitPrice
+    : settlement.customPricedAmount + settlement.computedStandardQuantity * parsedUnitPrice;
 
   return (
     <tr className="border-b border-stone-100 align-top">

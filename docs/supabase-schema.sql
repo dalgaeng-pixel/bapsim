@@ -61,6 +61,7 @@ create table if not exists public.daily_meal_orders (
   acknowledged boolean not null default false,
   is_admin_correction boolean not null default false,
   settlement_included boolean not null default true,
+  unit_price integer check (unit_price >= 0),
   updated_at timestamptz not null default now(),
   unique (order_date, client_id, meal_type_id)
 );

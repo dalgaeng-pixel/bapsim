@@ -139,6 +139,7 @@ type DailyMealOrderRow = {
   acknowledged: boolean;
   is_admin_correction?: boolean;
   settlement_included?: boolean;
+  unit_price?: number | null;
   updated_at: string;
 };
 
@@ -330,6 +331,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     settlementAccountDetailsStorageReady,
     settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
+    deliveryCorrectionPricingStorageReady,
     transactionStatementRemarkRows,
     overtimeMealEntryRows
   ] = await Promise.all([
@@ -358,6 +360,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       hasOptionalColumn(client, "daily_meal_orders", "is_admin_correction"),
       hasOptionalColumn(client, "daily_meal_orders", "settlement_included")
     ]).then((columns) => columns.every(Boolean)),
+    hasOptionalColumn(client, "daily_meal_orders", "unit_price"),
     selectOptionalRows<TransactionStatementRemarkRow>(client, "transaction_statement_remarks"),
     selectOptionalRows<OvertimeMealEntryRow>(client, "overtime_meal_entries")
   ]);
@@ -437,6 +440,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
     groupStorageReady,
     settlementPricingStorageReady: groupStorageReady && settlementPricingStorageReady,
     deliveryCorrectionStorageReady,
+    deliveryCorrectionPricingStorageReady,
     defaultQuantityVersionStorageReady: defaultQuantityVersionRows !== undefined,
     overtimeMealStorageReady,
     transactionStatementRemarksStorageReady,
@@ -487,6 +491,7 @@ export async function loadAppStateFromSupabase(client: SupabaseClient): Promise<
       acknowledged: row.acknowledged,
       isAdminCorrection: row.is_admin_correction === true,
       settlementIncluded: row.settlement_included !== false,
+      unitPrice: row.unit_price ?? undefined,
       updatedAt: row.updated_at
     })),
     overtimeMealEntries: (overtimeMealEntryRows ?? []).map((row): OvertimeMealEntry => ({
@@ -588,6 +593,7 @@ export async function saveAppStateToSupabase(client: SupabaseClient, state: AppS
     groupStorageReady: state.groupStorageReady,
     settlementPricingStorageReady: state.settlementPricingStorageReady,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady,
+    deliveryCorrectionPricingStorageReady: state.deliveryCorrectionPricingStorageReady,
     defaultQuantityVersionStorageReady: state.defaultQuantityVersionStorageReady,
     overtimeMealStorageReady: state.overtimeMealStorageReady,
     transactionStatementRemarksStorageReady: state.transactionStatementRemarksStorageReady,
@@ -623,6 +629,7 @@ export type AppStateDiff = {
   groupStorageReady?: boolean;
   settlementPricingStorageReady?: boolean;
   deliveryCorrectionStorageReady?: boolean;
+  deliveryCorrectionPricingStorageReady?: boolean;
   defaultQuantityVersionStorageReady?: boolean;
   overtimeMealStorageReady?: boolean;
   transactionStatementRemarksStorageReady?: boolean;
@@ -649,6 +656,7 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
   const groupStorageReady = diff.groupStorageReady === true;
   const settlementPricingStorageReady = diff.settlementPricingStorageReady === true;
   const deliveryCorrectionStorageReady = diff.deliveryCorrectionStorageReady === true;
+  const deliveryCorrectionPricingStorageReady = diff.deliveryCorrectionPricingStorageReady === true;
   const defaultQuantityVersionStorageReady = diff.defaultQuantityVersionStorageReady === true;
   const overtimeMealStorageReady = diff.overtimeMealStorageReady === true;
   const transactionStatementRemarksStorageReady = diff.transactionStatementRemarksStorageReady === true;
@@ -824,7 +832,8 @@ export async function saveAppStateDiffToSupabase(client: SupabaseClient, diff: A
         ...(deliveryCorrectionStorageReady
           ? {
               is_admin_correction: item.isAdminCorrection === true,
-              settlement_included: item.settlementIncluded !== false
+              settlement_included: item.settlementIncluded !== false,
+              ...(deliveryCorrectionPricingStorageReady ? { unit_price: item.unitPrice ?? null } : {})
             }
           : {}),
         updated_at: item.updatedAt

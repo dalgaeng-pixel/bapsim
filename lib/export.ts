@@ -247,7 +247,7 @@ export function buildMonthlyRows(state: AppState, month = todayKey().slice(0, 7)
           .filter((daily) => daily.clientId === client.id)
           .reduce((sum, daily) => sum + daily.finalQuantity, 0)
       }));
-      const totalAmount = settlement.settlementFinalQuantity * settlement.unitPrice;
+      const totalAmount = settlement.settlementAmount;
 
       return [
         ...locationDailyQuantities.map((daily) => [
@@ -337,7 +337,7 @@ export function buildTransactionStatementRows(statement: TransactionStatement, s
         day.date,
         day.lunchQuantity || "",
         day.dinnerQuantity || "",
-        statement.unitPrice,
+        day.priceNote ?? statement.unitPrice,
         day.totalAmount,
         day.memo ?? ""
       ]),

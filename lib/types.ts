@@ -26,6 +26,7 @@ export type AuditAction =
   | "update_monthly_adjustment"
   | "update_delivery_correction"
   | "reset_delivery_correction"
+  | "update_overtime_meal_entry"
   | "delete_client"
   | "create_settlement_account"
   | "update_settlement_account"
@@ -130,6 +131,7 @@ export interface DailyMealOrder {
   acknowledged: boolean;
   isAdminCorrection?: boolean;
   settlementIncluded?: boolean;
+  unitPrice?: number;
   overtimeQuantity?: number;
   updatedAt: string;
 }
@@ -240,6 +242,7 @@ export interface AppState {
   groupStorageReady: boolean;
   settlementPricingStorageReady: boolean;
   deliveryCorrectionStorageReady: boolean;
+  deliveryCorrectionPricingStorageReady: boolean;
   defaultQuantityVersionStorageReady: boolean;
   overtimeMealStorageReady: boolean;
   supplierProfileStorageReady: boolean;

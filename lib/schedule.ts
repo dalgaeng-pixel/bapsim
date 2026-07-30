@@ -137,6 +137,7 @@ export function normalizeAppState(state: AppState): AppState {
     groupStorageReady: state.groupStorageReady === true,
     settlementPricingStorageReady: state.settlementPricingStorageReady !== false,
     deliveryCorrectionStorageReady: state.deliveryCorrectionStorageReady !== false,
+    deliveryCorrectionPricingStorageReady: state.deliveryCorrectionPricingStorageReady !== false,
     defaultQuantityVersionStorageReady: state.defaultQuantityVersionStorageReady === true,
     overtimeMealStorageReady: state.overtimeMealStorageReady === true,
     supplierProfileStorageReady: state.supplierProfileStorageReady === true,
@@ -688,6 +689,22 @@ export function getMonthlySettlementForSettlementAccount(
   // Account settlement follows actual daily quantities; legacy client-level monthly overrides do not change location subtotals.
   const locationAdjustedFinalQuantity = computedFinalQuantity;
   const adjustment = getSettlementAccountMonthlyAdjustment(state, settlementAccountId, month);
+  const unitPrice = adjustment?.unitPrice ?? account?.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE;
+  const billableOrders = clientSettlements.flatMap((settlement) => settlement.orders);
+  const customPricedOrders = billableOrders.filter((order) => order.unitPrice !== undefined);
+  const customPricedQuantity = customPricedOrders.reduce((sum, order) => sum + order.finalQuantity, 0);
+  const customPricedAmount = customPricedOrders.reduce(
+    (sum, order) => sum + order.finalQuantity * (order.unitPrice ?? unitPrice),
+    0
+  );
+  const computedStandardQuantity = computedFinalQuantity - customPricedQuantity;
+  const computedAmount = customPricedAmount + computedStandardQuantity * unitPrice;
+  const settlementFinalQuantity = adjustment?.finalQuantity ?? locationAdjustedFinalQuantity;
+  // A manual monthly quantity override intentionally uses the month-wide unit price,
+  // because it cannot be allocated safely to an individual delivery item.
+  const settlementAmount = adjustment?.finalQuantity === undefined
+    ? computedAmount
+    : settlementFinalQuantity * unitPrice;
 
   return {
     clients,
@@ -696,13 +713,17 @@ export function getMonthlySettlementForSettlementAccount(
     computedBaseQuantity,
     computedFinalQuantity,
     locationAdjustedFinalQuantity,
-    settlementFinalQuantity: adjustment?.finalQuantity ?? locationAdjustedFinalQuantity,
-    unitPrice: adjustment?.unitPrice ?? account?.defaultUnitPrice ?? DEFAULT_MEAL_UNIT_PRICE,
+    settlementFinalQuantity,
+    unitPrice,
+    computedStandardQuantity,
+    customPricedQuantity,
+    customPricedAmount,
+    computedAmount,
+    settlementAmount,
     rejectedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.rejectedCount, 0),
     changedCount: clientSettlements.reduce((sum, settlement) => sum + settlement.changedCount, 0)
   };
 }
-
 export function buildBaseOrder(
   state: AppState,
   clientId: string,

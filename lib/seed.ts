@@ -208,6 +208,7 @@ export function createInitialState(): AppState {
     groupStorageReady: true,
     settlementPricingStorageReady: true,
     deliveryCorrectionStorageReady: true,
+    deliveryCorrectionPricingStorageReady: true,
     defaultQuantityVersionStorageReady: true,
     overtimeMealStorageReady: true,
     supplierProfileStorageReady: true,

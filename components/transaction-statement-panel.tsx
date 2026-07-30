@@ -43,7 +43,7 @@ function locationTableHtml(
     ? [
         "<tr><td>", escapeHtml(day.date), "</td><td>", day.lunchQuantity ? String(day.lunchQuantity) : "", "</td><td>",
         day.dinnerQuantity ? String(day.dinnerQuantity) : "", "</td><td>", formatWon(day.totalAmount), "</td><td>",
-        escapeHtml(day.memo ?? ""), "</td></tr>"
+        escapeHtml([day.priceNote, day.memo].filter(Boolean).join(" · ")), "</td></tr>"
       ].join("")
     : "<tr class=\"blank\"><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>"
   ).join("");

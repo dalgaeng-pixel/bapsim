@@ -67,3 +67,7 @@ The app now auto-detects Supabase configuration.
 - If the Supabase tables are empty on first run, the current local state is uploaded as the initial remote state.
 
 This is still an MVP bridge. The next hardening step is replacing whole-state sync with granular server actions for each workflow.
+
+## Special Meal Prices
+
+Run docs/supabase-daily-delivery-correction-pricing-migration.sql after the daily-delivery-corrections migration to enable optional direct prices for special-meal corrections.
