@@ -1006,7 +1006,7 @@ function AdminOvertimeMealEditor({
         </p>
       ) : (
         <form
-          className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_auto] md:items-end"
+          className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(120px,160px)_auto] lg:items-end"
           onSubmit={(event) => {
             event.preventDefault();
             if (!selectedClient || !canSave) {
@@ -1020,10 +1020,10 @@ function AdminOvertimeMealEditor({
             setFeedback(existingEntry ? "야근 인원을 수정했습니다." : "야근 인원을 등록했습니다.");
           }}
         >
-          <label className="grid gap-1 text-sm font-bold text-stone-700">
+          <label className="grid min-w-0 gap-1 text-sm font-bold text-stone-700">
             거래처
             <select
-              className="focus-ring h-10 rounded-md border border-stone-300 bg-white px-3 font-bold"
+              className="focus-ring h-10 w-full min-w-0 rounded-md border border-stone-300 bg-white px-3 font-bold"
               value={clientId}
               onChange={(event) => setClientId(event.target.value)}
             >
@@ -1032,10 +1032,10 @@ function AdminOvertimeMealEditor({
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-sm font-bold text-stone-700">
+          <label className="grid min-w-0 gap-1 text-sm font-bold text-stone-700">
             야근 인원
             <input
-              className="focus-ring h-10 rounded-md border border-stone-300 px-3 text-right text-lg font-black disabled:bg-stone-100"
+              className="focus-ring h-10 w-full min-w-0 rounded-md border border-stone-300 px-3 text-right text-lg font-black disabled:bg-stone-100"
               type="number"
               min={0}
               step={1}
@@ -1044,7 +1044,7 @@ function AdminOvertimeMealEditor({
               onChange={(event) => setQuantity(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
             />
           </label>
-          <button className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-md bg-bapsim-red px-4 font-black text-white disabled:bg-stone-300" type="submit" disabled={!canSave}>
+          <button className="focus-ring inline-flex h-10 w-full items-center justify-center gap-2 whitespace-nowrap rounded-md bg-bapsim-red px-4 font-black text-white disabled:bg-stone-300 lg:w-auto" type="submit" disabled={!canSave}>
             <Save size={16} />
             {existingEntry ? "수정" : "등록"}
           </button>

@@ -251,3 +251,8 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - Settlement-included administrator correction reasons automatically pre-fill the matching location/date statement remark. Matching lunch/dinner reasons are deduplicated; differing reasons are labeled by meal period. A saved statement remark, including an intentionally empty value, overrides the automatic text.
 - The ExcelJS `uuid` transitive dependency is overridden to `11.1.1` to avoid its vulnerable older version while preserving ExcelJS CommonJS compatibility.
 - Related design: `docs/transaction-statement-excel-design.md`.
+
+## Admin Overtime Editor Layout (2026-08-06)
+
+- The Important Changes overtime editor switches to its three-column layout at the `lg` breakpoint instead of `md`, preventing the headcount input and save button from colliding when the administrator sidebar reduces the available width.
+- The client selector and headcount input now explicitly use the available width with zero minimum shrink constraints. The save button is full-width on compact screens and keeps a single-line label in the desktop row.
