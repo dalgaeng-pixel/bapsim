@@ -10,6 +10,8 @@ export type TransactionStatementDay = {
   totalAmount: number;
   memo?: string;
   priceNote?: string;
+  lunchDirectUnitPrice?: number;
+  dinnerDirectUnitPrice?: number;
 };
 
 export type TransactionStatementLocation = {
@@ -44,6 +46,8 @@ type DayAccumulator = {
   dinnerAmount: number;
   lunchDirectUnitPrice?: number;
   dinnerDirectUnitPrice?: number;
+  lunchCorrectionMemo?: string;
+  dinnerCorrectionMemo?: string;
 };
 
 function mealPeriod(name: string) {
@@ -67,6 +71,17 @@ function buildPriceNote(day: DayAccumulator) {
     day.dinnerDirectUnitPrice === undefined ? "" : `석식 별도 단가 ${formatUnitPrice(day.dinnerDirectUnitPrice)}`
   ].filter(Boolean);
   return notes.join(" · ") || undefined;
+}
+
+function buildCorrectionMemo(day: DayAccumulator) {
+  const lunchMemo = day.lunchCorrectionMemo?.trim();
+  const dinnerMemo = day.dinnerCorrectionMemo?.trim();
+  if (lunchMemo && dinnerMemo) {
+    return lunchMemo === dinnerMemo
+      ? lunchMemo
+      : `\uC911\uC2DD: ${lunchMemo} \u00B7 \uC11D\uC2DD: ${dinnerMemo}`;
+  }
+  return lunchMemo || dinnerMemo || undefined;
 }
 
 function buildLocationStatement(
@@ -101,11 +116,17 @@ function buildLocationStatement(
       if (order.unitPrice !== undefined) {
         day.lunchDirectUnitPrice = order.unitPrice;
       }
+      if (order.isAdminCorrection && order.memo?.trim()) {
+        day.lunchCorrectionMemo = order.memo.trim();
+      }
     } else {
       day.dinnerQuantity += order.finalQuantity;
       day.dinnerAmount += order.finalQuantity * orderUnitPrice;
       if (order.unitPrice !== undefined) {
         day.dinnerDirectUnitPrice = order.unitPrice;
+      }
+      if (order.isAdminCorrection && order.memo?.trim()) {
+        day.dinnerCorrectionMemo = order.memo.trim();
       }
     }
     byDate.set(order.date, day);
@@ -114,12 +135,12 @@ function buildLocationStatement(
   const days = [...byDate.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, quantities]) => {
-      const memo = state.transactionStatementRemarks.find(
+      const savedRemark = state.transactionStatementRemarks.find(
         (item) =>
           item.settlementAccountId === accountId &&
           item.clientId === client.id &&
           item.date === date
-      )?.memo;
+      );
       return {
         date,
         lunchQuantity: quantities.lunchQuantity,
@@ -127,8 +148,10 @@ function buildLocationStatement(
         lunchAmount: quantities.lunchAmount,
         dinnerAmount: quantities.dinnerAmount,
         totalAmount: quantities.lunchAmount + quantities.dinnerAmount,
-        memo: memo || undefined,
-        priceNote: buildPriceNote(quantities)
+        memo: savedRemark ? savedRemark.memo || undefined : buildCorrectionMemo(quantities),
+        priceNote: buildPriceNote(quantities),
+        lunchDirectUnitPrice: quantities.lunchDirectUnitPrice,
+        dinnerDirectUnitPrice: quantities.dinnerDirectUnitPrice
       };
     });
 

@@ -242,3 +242,12 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - A direct price applies to the selected lunch or dinner correction only. It is included in monthly settlement totals, transaction-statement totals, printing, and Excel export; printed statements append the special-price note to the relevant row.
 - Run `docs/supabase-daily-delivery-correction-pricing-migration.sql` before using this field with Supabase.
 - A manual monthly final-quantity override remains an account-wide override and therefore uses the selected monthly unit price rather than attempting to allocate the override to a special-meal row.
+## A4 Transaction Statement Excel (2026-08-06)
+
+- The transaction-statement Excel action now generates a customer-facing workbook that mirrors the A4 portrait browser print form. The operations-facing monthly settlement Excel remains unchanged.
+- ExcelJS is loaded only when the administrator presses the transaction-statement Excel button. The workbook stores A4 portrait, narrow margins, a defined print area, and fit-to-one-page settings.
+- One delivery location uses a full-width table, two locations are stacked, and three to four locations use a 2x2 grid. Each table contains date, lunch, dinner, formula amount, wrapped remarks, and formula subtotals.
+- Location unit-price cells and daily quantity cells are editable. Normal amounts, location subtotals, the monthly total, and the VAT-inclusive header total recalculate through Excel formulas; recorded special prices remain explicit row exceptions.
+- Settlement-included administrator correction reasons automatically pre-fill the matching location/date statement remark. Matching lunch/dinner reasons are deduplicated; differing reasons are labeled by meal period. A saved statement remark, including an intentionally empty value, overrides the automatic text.
+- The ExcelJS `uuid` transitive dependency is overridden to `11.1.1` to avoid its vulnerable older version while preserving ExcelJS CommonJS compatibility.
+- Related design: `docs/transaction-statement-excel-design.md`.

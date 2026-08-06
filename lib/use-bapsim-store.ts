@@ -1387,14 +1387,9 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         const byKey = new Map(
           remarks.map((item) => [`${item.clientId}:${item.date}`, item.memo.trim()])
         );
-        let transactionStatementRemarks = previous.transactionStatementRemarks.filter(
-          (item) => !(item.settlementAccountId === settlementAccountId && byKey.has(`${item.clientId}:${item.date}`) && byKey.get(`${item.clientId}:${item.date}`) === "")
-        );
+        let transactionStatementRemarks = previous.transactionStatementRemarks;
 
         for (const [key, memo] of byKey) {
-          if (!memo) {
-            continue;
-          }
           const [clientId, date] = key.split(":");
           const existing = transactionStatementRemarks.find(
             (item) => item.settlementAccountId === settlementAccountId && item.clientId === clientId && item.date === date

@@ -2,7 +2,6 @@
 
 import { Download, Printer, Save } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { buildTransactionStatementRows, downloadExcel } from "@/lib/export";
 import { todayKey } from "@/lib/date";
 import {
   getTransactionStatement,
@@ -165,6 +164,7 @@ export function TransactionStatementPanel({
   const [billingAddress, setBillingAddress] = useState("");
   const [defaultUnitPrice, setDefaultUnitPrice] = useState("8000");
   const [remarkDrafts, setRemarkDrafts] = useState<Record<string, string>>({});
+  const [excelDownloading, setExcelDownloading] = useState(false);
   const activeAccountId = state.settlementAccounts.some((account) => account.id === accountId)
     ? accountId
     : state.settlementAccounts[0]?.id ?? "";
@@ -189,7 +189,7 @@ export function TransactionStatementPanel({
     setRemarkDrafts(Object.fromEntries(statement.locations.flatMap((location) =>
       location.days.map((day) => [remarkKey(location.client.id, day.date), day.memo ?? ""])
     )));
-  }, [statement?.account.id, month, state.transactionStatementRemarks]);
+  }, [statement?.account.id, month, state.orders, state.transactionStatementRemarks]);
 
   if (!statement) {
     return <p className="mt-5 text-sm font-bold text-stone-500">등록된 정산 업체가 없습니다.</p>;
@@ -205,6 +205,18 @@ export function TransactionStatementPanel({
   const changedRemarks = remarkRows.filter((row) =>
     (remarkDrafts[row.key] ?? "") !== (row.day.memo ?? "")
   );
+  const handleExcelDownload = async () => {
+    setExcelDownloading(true);
+    try {
+      const { downloadTransactionStatementExcel } = await import("@/lib/transaction-statement-excel");
+      await downloadTransactionStatementExcel(statement, state.supplierProfile);
+    } catch (error) {
+      console.error("Failed to create transaction statement Excel file.", error);
+      window.alert("거래명세표 엑셀을 만들지 못했습니다. 잠시 후 다시 시도하세요.");
+    } finally {
+      setExcelDownloading(false);
+    }
+  };
   const locationClass = statement.locations.length === 1
     ? "grid-cols-1"
     : statement.locations.length === 2
@@ -227,8 +239,13 @@ export function TransactionStatementPanel({
           </select>
         </label>
         <div className="flex flex-wrap gap-2">
-          <button className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black" onClick={() => downloadExcel("bapsim-transaction-" + statement.account.name + "-" + month + ".xlsx", buildTransactionStatementRows(statement, state.supplierProfile))}>
-            <Download size={16} /> 엑셀
+          <button
+            className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black disabled:bg-stone-100 disabled:text-stone-400"
+            title={changedRemarks.length ? "비고를 먼저 저장하세요." : "A4 거래명세표 엑셀"}
+            disabled={changedRemarks.length > 0 || excelDownloading}
+            onClick={() => void handleExcelDownload()}
+          >
+            <Download size={16} /> {excelDownloading ? "생성 중" : "엑셀"}
           </button>
           <button className="focus-ring inline-flex items-center gap-2 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-black disabled:bg-stone-100" title={changedRemarks.length ? "비고를 먼저 저장하세요." : "A4 거래명세서 인쇄"} disabled={changedRemarks.length > 0} onClick={() => printTransactionStatement(statement, state.supplierProfile)}>
             <Printer size={16} /> 인쇄
