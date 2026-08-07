@@ -595,6 +595,7 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         }
 
         const important = isImportantChange(order.finalQuantity, afterQuantity);
+        const quantityChanged = order.finalQuantity !== afterQuantity;
         const nextStatus =
           afterQuantity === 0 ? zeroStatus : afterQuantity === order.baseQuantity ? "normal" : "changed";
         const nextOrder: DailyMealOrder = {
@@ -622,13 +623,13 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         };
 
         const notifications = [...previous.notifications];
-        if (nextOrder.requiresReview) {
+        if (quantityChanged) {
           notifications.unshift({
             id: id("notification"),
             target: "admin",
             clientId,
-            title: afterQuantity === 0 ? "식사 거절" : "중요 수량 변경",
-            body: `${client?.name ?? "거래처"} ${mealType?.name ?? "식사"} ${order.finalQuantity}개 -> ${afterQuantity}개`,
+            title: afterQuantity === 0 ? "식사 안먹음" : important ? "중요 수량 변경" : "식수 변경",
+            body: `${client?.name ?? "거래처"} ${date} ${mealType?.name ?? "식사"} ${order.finalQuantity}개 -> ${afterQuantity}개`,
             read: false,
             createdAt
           });

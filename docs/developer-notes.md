@@ -265,3 +265,8 @@ Whenever future work changes behavior, deployment, storage, or setup:
 - A read-only production audit found no customer meal change log, late request, or matching notification on the morning of 2026-08-06. The 09:57:54 Sumin Frame meal rows were created alongside the administrator's customer creation audit and are not customer activity.
 - The existing Wonframe customer overtime notification from 2026-08-06 15:50:28 KST (0 to 19) was backfilled into `admin_audit_logs` with its original timestamp and contact manager.
 - Related design: `docs/client-change-activity-log-design.md`.
+
+## Customer Meal Change Push Coverage (2026-08-07)
+
+- Every actual customer meal quantity change before cutoff now creates an administrator notification and Web Push, including changes smaller than the important-change threshold. After-cutoff requests, no-meal changes, overtime entries, and customer information requests retain their existing notifications.
+- Re-saving an unchanged quantity does not send a push. Notification bodies include the delivery date, meal period, and before/after quantity so the administrator can identify the affected delivery slot without opening the app first.
