@@ -256,3 +256,12 @@ Whenever future work changes behavior, deployment, storage, or setup:
 
 - The Important Changes overtime editor switches to its three-column layout at the `lg` breakpoint instead of `md`, preventing the headcount input and save button from colliding when the administrator sidebar reduces the available width.
 - The client selector and headcount input now explicitly use the available width with zero minimum shrink constraints. The save button is full-width on compact screens and keeps a single-line label in the desktop row.
+
+## Customer Change Activity Log (2026-08-07)
+
+- The administrator Important Changes screen now shows authenticated customer meal and overtime activity from 2026-08-06 onward. Each row includes the Supabase server receipt timestamp in KST down to seconds, delivery location, contact manager, detailed before/after quantity, and a before-cutoff, after-cutoff, or overtime badge.
+- The verified contact server action writes activity directly to `admin_audit_logs` before applying the state diff. New rows omit `created_at`, so Supabase generates the trusted timestamp instead of accepting the customer phone clock. Source change/request/notification UUIDs prevent duplicate activity rows when a request is retried.
+- Customer meal sync now removes the helper `mealTypes` field before calling the restricted contact action. Previously `calculateDiff` added this field whenever an order changed, causing the contact security allowlist to reject otherwise valid Today/Tomorrow and Weekly Schedule meal saves.
+- A read-only production audit found no customer meal change log, late request, or matching notification on the morning of 2026-08-06. The 09:57:54 Sumin Frame meal rows were created alongside the administrator's customer creation audit and are not customer activity.
+- The existing Wonframe customer overtime notification from 2026-08-06 15:50:28 KST (0 to 19) was backfilled into `admin_audit_logs` with its original timestamp and contact manager.
+- Related design: `docs/client-change-activity-log-design.md`.

@@ -216,7 +216,9 @@ export function useBapsimStore(initialState?: AppState, contactSyncCredentials?:
         if (Object.keys(diff).length > 0) {
           const credentials = contactSyncRef.current;
           if (credentials) {
-            void syncContactAccessGroupDiffAction(credentials.inviteCode, credentials.invitePin, diff);
+            const contactDiff = { ...diff };
+            delete contactDiff.mealTypes;
+            void syncContactAccessGroupDiffAction(credentials.inviteCode, credentials.invitePin, contactDiff);
           } else {
             void syncAppStateDiffAction(diff);
           }

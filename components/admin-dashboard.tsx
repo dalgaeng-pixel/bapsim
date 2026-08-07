@@ -7,6 +7,7 @@ import {
   Building2,
   CalendarDays,
   Check,
+  Clock3,
   ChevronDown,
   ChevronUp,
   Download,
@@ -144,6 +145,43 @@ function mapUrl(address: string) {
 
 function formatWon(value: number) {
   return `${new Intl.NumberFormat("ko-KR").format(value)}원`;
+}
+
+const CLIENT_ACTIVITY_START_AT = "2026-08-05T15:00:00.000Z";
+const clientActivityActions = new Set([
+  "client_change_before_cutoff",
+  "client_change_after_cutoff",
+  "client_overtime_change"
+]);
+
+function formatKoreanTimestamp(value: string) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23"
+    })
+      .formatToParts(new Date(value))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function clientActivityBadge(action: string) {
+  if (action === "client_change_after_cutoff") {
+    return { label: "마감 후", className: "border-red-200 bg-red-50 text-bapsim-red" };
+  }
+  if (action === "client_overtime_change") {
+    return { label: "야근 등록", className: "border-sky-200 bg-sky-50 text-sky-800" };
+  }
+  return { label: "마감 전", className: "border-emerald-200 bg-emerald-50 text-emerald-800" };
 }
 
 export function AdminDashboard({ initialState }: { initialState?: AppState }) {
@@ -305,6 +343,10 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
   );
 
   const pendingRequests = state.changeRequests.filter((request) => request.status === "pending");
+  const clientActivityLogs = [...state.auditLogs]
+    .filter((log) => clientActivityActions.has(log.action) && log.createdAt >= CLIENT_ACTIVITY_START_AT)
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const adminAuditLogs = state.auditLogs.filter((log) => !clientActivityActions.has(log.action));
   const overtimeEntries = state.overtimeMealEntries
     .filter((entry) => entry.date === selectedDate)
     .sort(
@@ -692,6 +734,45 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
                   )}
                 </div>
               </div>
+
+              <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-soft xl:col-span-2">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-black">거래처 변경 로그</h2>
+                    <p className="mt-1 text-sm font-semibold text-stone-500">
+                      2026년 8월 6일부터 서버에 접수된 시간을 한국시간 기준으로 표시합니다.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-stone-100 px-3 py-1 text-sm font-black text-stone-700">
+                    총 {clientActivityLogs.length}건
+                  </span>
+                </div>
+                <div className="mt-4 divide-y divide-stone-200 border-y border-stone-200">
+                  {clientActivityLogs.length === 0 ? (
+                    <EmptyState label="기록된 거래처 변경이 없습니다." />
+                  ) : (
+                    clientActivityLogs.map((log) => {
+                      const badge = clientActivityBadge(log.action);
+                      return (
+                        <div key={log.id} className="grid gap-2 py-3 md:grid-cols-[180px_150px_minmax(0,1fr)_auto] md:items-center">
+                          <p className="inline-flex items-center gap-2 whitespace-nowrap text-sm font-black text-stone-800">
+                            <Clock3 size={15} className="text-stone-500" />
+                            {formatKoreanTimestamp(log.createdAt)}
+                          </p>
+                          <div className="min-w-0">
+                            <p className="break-words font-black text-stone-900">{log.targetLabel}</p>
+                            <p className="mt-0.5 text-xs font-bold text-stone-500">담당자 {log.adminName}</p>
+                          </div>
+                          <p className="min-w-0 break-words text-sm font-semibold text-stone-700">{log.detail}</p>
+                          <span className={`w-fit whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-black ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -926,10 +1007,10 @@ const [selectedMonth, setSelectedMonth] = useState(todayKey().slice(0, 7));
                 <div className="rounded-lg border border-stone-200 p-4">
                   <h3 className="font-black">중요 작업 이력</h3>
                   <div className="mt-3 space-y-2">
-                    {state.auditLogs.length === 0 ? (
+                    {adminAuditLogs.length === 0 ? (
                       <EmptyState label="기록된 작업 이력이 없습니다." />
                     ) : (
-                      state.auditLogs.slice(0, 8).map((log) => (
+                      adminAuditLogs.slice(0, 8).map((log) => (
                         <div key={log.id} className="rounded-md bg-stone-50 p-3 text-sm">
                           <p className="font-black">{log.targetLabel}</p>
                           <p className="text-stone-600">{log.detail} · {log.adminName}</p>

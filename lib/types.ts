@@ -37,7 +37,10 @@ export type AuditAction =
   | "reset_contact_access_group_pin"
   | "delete_contact_access_group"
   | "update_transaction_statement_remark"
-  | "update_holiday_schedule";
+  | "update_holiday_schedule"
+  | "client_change_before_cutoff"
+  | "client_change_after_cutoff"
+  | "client_overtime_change";
 
 export interface SettlementAccount {
   id: string;
